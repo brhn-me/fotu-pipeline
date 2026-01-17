@@ -26,7 +26,7 @@ db-revision:
 
 # Dependency management
 frontend-install:
-	cd frontend && npm install
+	cd frontend && pnpm install
 
 backend-install:
 	cd backend && pip install -r requirements.txt

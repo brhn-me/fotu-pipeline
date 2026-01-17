@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const API_Base = "http://localhost:8000/api";
 
@@ -14,7 +14,7 @@ export function LogsViewer({ fileId, service, height = "h-96" }: { fileId?: stri
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const fetchLogs = async () => {
+    const fetchLogs = useCallback(async () => {
         setLoading(true);
         try {
             let url = "";
@@ -29,13 +29,13 @@ export function LogsViewer({ fileId, service, height = "h-96" }: { fileId?: stri
             }
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
-    }
+    }, [fileId, service]);
 
     useEffect(() => {
         fetchLogs();
         const interval = setInterval(fetchLogs, 5000);
         return () => clearInterval(interval);
-    }, [fileId, service]);
+    }, [fetchLogs]);
 
     return (
         <div className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col ${height}`}>

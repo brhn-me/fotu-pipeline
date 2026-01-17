@@ -84,7 +84,7 @@ export function FileCard({ file }: { file: FileItem }) {
                         {/* Location */}
                         <div
                             className="flex justify-between text-xs items-center h-5 cursor-pointer group/loc"
-                            onClick={(e) => { e.stopPropagation(); file.meta_gps && setShowMap(true); }}
+                            onClick={(e) => { e.stopPropagation(); if (file.meta_gps) setShowMap(true); }}
                             title={file.meta_gps ? "Click to view map" : undefined}
                         >
                             <span className="text-gray-600">Location:</span>

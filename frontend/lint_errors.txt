@@ -1,0 +1,23 @@
+
+/home/burhan/.gemini/antigravity/scratch/fotu-pipeline/frontend/src/App.tsx
+   99:21  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/burhan/.gemini/antigravity/scratch/fotu-pipeline/frontend/src/App.tsx:99:21
+   97 |   };
+   98 |
+>  99 |   useEffect(() => { fetchStats(); }, []);
+      |                     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  100 |
+  101 |   return (
+  102 |     <div className="space-y-8">  react-hooks/set-state-in-effect
+  255:17  error  Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-explicit-any
+  265:14  error  'e' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+
+✖ 3 problems (3 errors, 0 warnings)
+

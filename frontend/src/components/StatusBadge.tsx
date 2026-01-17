@@ -3,7 +3,7 @@ interface Props {
 }
 
 export function StatusBadge({ status }: Props) {
-    const colors: any = {
+    const colors: Record<string, string> = {
         'DONE': 'bg-green-100 text-green-700 border-green-200',
         'ERROR': 'bg-red-100 text-red-700 border-red-200',
         'QUEUED': 'bg-gray-100 text-gray-700 border-gray-200',
@@ -11,7 +11,8 @@ export function StatusBadge({ status }: Props) {
         'SPLITTING': 'bg-blue-100 text-blue-700 border-blue-200',
         'ENCODING': 'bg-indigo-100 text-indigo-700 border-indigo-200',
         'SCANNING': 'bg-blue-100 text-blue-700 border-blue-200',
-        'IDLE': 'bg-gray-100 text-gray-600 border-gray-200'
+        'IDLE': 'bg-gray-100 text-gray-600 border-gray-200',
+        'REVIEW': 'bg-amber-100 text-amber-700 border-amber-200'
     };
     const c = colors[status] || colors['PROCESSING'];
     return (

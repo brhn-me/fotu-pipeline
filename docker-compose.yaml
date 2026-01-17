@@ -4,12 +4,15 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
 
   promtail:
     image: grafana/promtail:latest
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers
       - ./promtail-config.yaml:/etc/promtail/config.yaml
+      - promtail_data:/tmp
     command: -config.file=/etc/promtail/config.yaml
 
   grafana:
@@ -133,10 +136,12 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: npm run dev -- --host
+    command: pnpm run dev --host
     depends_on:
       - api
 
 volumes:
   redis_data:
   postgres_data:
+  loki_data:
+  promtail_data:
