@@ -42,7 +42,6 @@ clean:
 reset:
 	docker compose down -v
 	sudo rm -rf data/output/*
-	sudo rm -rf data/temp/*
 	$(MAKE) up
 	@echo "Waiting for database to be ready..."
 	@sleep 5
