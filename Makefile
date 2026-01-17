@@ -2,27 +2,27 @@
 
 # Docker commands
 up:
-	docker-compose up -d
+	docker compose up -d
 
 down:
-	docker-compose down
+	docker compose down
 
 build:
-	docker-compose build
+	docker compose build
 
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 restart:
-	docker-compose restart
+	docker compose restart
 
 # Database migrations
 db-migrate:
-	docker-compose exec api alembic upgrade head
+	docker compose exec api alembic upgrade head
 
 db-revision:
 	@read -p "Enter revision message: " msg; \
-	docker-compose exec api alembic revision --autogenerate -m "$$msg"
+	docker compose exec api alembic revision --autogenerate -m "$$msg"
 
 # Dependency management
 frontend-install:
@@ -33,10 +33,10 @@ backend-install:
 
 # Cleanup
 clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
+	sudo find . -type d -name "__pycache__" -exec rm -rf {} +
+	sudo find . -type f -name "*.pyc" -delete
 	rm -rf frontend/dist
-	docker-compose down -v
+	docker compose down -v
 
 # Help
 help:
