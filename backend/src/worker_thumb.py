@@ -26,23 +26,20 @@ def process_thumb(payload):
         os.makedirs(thumb_dir, exist_ok=True)
         
         # Consistent hash based naming or just file_id
-        thumb_path = os.path.join(thumb_dir, f"{file_id}.jpg")
+        thumb_path = os.path.join(thumb_dir, f"{file_id}.webp")
         
-        if os.path.exists(thumb_path):
-            # Already exists, skip or overwrite?
-            # If we want to be safe, maybe check mtime? For now skip if exists to save CPU.
-             pass
-        else:
-             logger.info(f"Generating thumb for {file_path}", file_id=file_id)
-             # Generate 240p height, auto width
-             # ffmpeg -i input -vf "scale=-1:240" -q:v 5 output.jpg
-             subprocess.run([
-                 "ffmpeg", "-y", "-i", file_path,
-                 "-vf", "scale=-1:240",
-                 "-q:v", "5",
-                 "-frames:v", "1",
-                 thumb_path
-             ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logger.info(f"Generating thumb: {file_path}", extra={"file_id": file_id})
+        # Generate 240p height, auto width, webp
+        # ffmpeg -i input -vf "scale=-1:240" -vcodec libwebp -lossless 0 -compression_level 4 -q:v 50 -loop 0 -preset default -an -vsync 0 output.webp
+        # Simplified: -c:v libwebp -q:v 80
+        subprocess.run([
+             "ffmpeg", "-y", "-i", file_path,
+             "-vf", "scale=-1:240",
+             "-c:v", "libwebp",
+             "-q:v", "80", 
+             "-frames:v", "1",
+             thumb_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Update DB
         file_rec = db.query(File).filter(File.id == file_id).first()
@@ -51,7 +48,7 @@ def process_thumb(payload):
             db.commit()
 
     except Exception as e:
-        logger.error(f"Thumb Error {file_path}: {e}", file_id=file_id)
+        logger.error(f"Thumb Error {file_path}: {e}", extra={"file_id": file_id})
     finally:
         db.close()
 

@@ -98,7 +98,7 @@ def process_photo(file_path, file_id):
 
             db.commit()
             
-        logger.info(f"Done photo: {output_path}", file_id=file_id)
+        logger.info(f"Encoded photo: {output_path}", file_id=file_id)
 
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}", file_id=file_id)
@@ -110,7 +110,7 @@ def process_photo(file_path, file_id):
         db.close()
 
 if __name__ == "__main__":
-    logger.info("Photo Worker Started (Phase 3)")
+    logger.info("Photo Worker Started")
     while True:
         task = r.blpop(QUEUE_PHOTO, timeout=10)
         if task:

@@ -61,7 +61,7 @@ services:
 
   worker-scanner:
     build: ./backend
-    command: python -m src.worker_scanner
+    command: python -u -m src.worker_scanner
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -75,7 +75,7 @@ services:
 
   worker-photo:
     build: ./backend
-    command: python -m src.worker_photo
+    command: python -u -m src.worker_photo
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -89,7 +89,7 @@ services:
 
   worker-video:
     build: ./backend
-    command: python -m src.worker_video
+    command: python -u -m src.worker_video
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -103,7 +103,7 @@ services:
 
   worker-raw:
     build: ./backend
-    command: python -m src.worker_raw
+    command: python -u -m src.worker_raw
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -117,7 +117,7 @@ services:
 
   worker-thumb:
     build: ./backend
-    command: python -m src.worker_thumb
+    command: python -u -m src.worker_thumb
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -131,7 +131,7 @@ services:
 
   worker-metadata:
     build: ./backend
-    command: python -m src.worker_metadata
+    command: python -u -m src.worker_metadata
     volumes:
       - ./backend:/app
       - ./data:/data

@@ -11,9 +11,15 @@ export function FileExplorerPage({ type }: FileExplorerPageProps) {
     const [files, setFiles] = useState<FileItem[]>([]);
 
     useEffect(() => {
-        fetch(`${API_Base}/files`).then(r => r.json()).then((d: FileItem[]) => {
-            setFiles(d.filter((f: FileItem) => f.type === type));
-        });
+        const fetchFiles = () => {
+            fetch(`${API_Base}/files`).then(r => r.json()).then((d: FileItem[]) => {
+                setFiles(d.filter((f: FileItem) => f.type === type));
+            });
+        };
+
+        fetchFiles(); // Initial fetch
+        const interval = setInterval(fetchFiles, 2000); // Poll every 2s
+        return () => clearInterval(interval);
     }, [type]);
 
     const title = type.charAt(0) + type.slice(1).toLowerCase();

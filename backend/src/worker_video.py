@@ -3,8 +3,7 @@ import json
 import subprocess
 import shutil
 import glob
-from src.db import r, engine, SessionLocal, File, VideoJob, VideoChunk, Config
-from src.db import QUEUE_VIDEO_SPLIT, QUEUE_VIDEO_ENCODE, QUEUE_VIDEO_JOIN
+from sqlalchemy.orm import Session
 from src.db import r, engine, SessionLocal, File, VideoJob, VideoChunk, Config
 from src.db import QUEUE_VIDEO_SPLIT, QUEUE_VIDEO_ENCODE, QUEUE_VIDEO_JOIN
 from datetime import datetime
@@ -95,6 +94,7 @@ def process_split(payload):
             db.commit()
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Split Error: {e}", file_id=file_id)
         if file_rec:
             file_rec.status = "ERROR"
@@ -147,11 +147,32 @@ def process_encode(payload):
                 VideoChunk.status != "DONE"
             ).count()
             
+            # Detailed Logging
+            try:
+                # Fetch job details if we didn't already
+                if not job:
+                     job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
+                
+                # Fetch file path
+                file_path = "Unknown"
+                if job:
+                     frec = db.query(File).filter(File.id == job.file_id).first()
+                     if frec: file_path = frec.path
+
+                total = job.total_chunks if job else 0
+                done_count = total - pending_count
+                pct = int((done_count / total) * 100) if total > 0 else 0
+                
+                logger.info(f"Encoded chunk {index+1}/{total} ({pct}%) for {file_path}", file_id=file_id)
+            except:
+                pass
+            
             if pending_count == 0:
                 logger.info(f"Job {job_id} complete. Queuing join.", file_id=file_id)
                 r.rpush(QUEUE_VIDEO_JOIN, json.dumps({"job_id": job_id}))
                 
         except Exception as e:
+            db.rollback()
             logger.error(f"Encode Error (Job {job_id} Index {index}): {e}", file_id=file_id)
             chunk.retry_count += 1
             if chunk.retry_count < 3:
@@ -178,11 +199,11 @@ def process_join(payload):
             
         file_rec = db.query(File).filter(File.id == job.file_id).first()
         file_id = file_rec.id if file_rec else None
-        logger.info(f"Joining job {job_id}", file_id=file_id)
-        
         if file_rec:
             file_rec.status = "JOINING"
             db.commit()
+            
+        logger.info(f"Joining job {job_id} for {file_rec.path if file_rec else 'Unknown'}", file_id=file_id)
         
         job_dir = job.job_dir
         original_path = file_rec.path
@@ -220,7 +241,7 @@ def process_join(payload):
         
         # Cleanup
         shutil.rmtree(job_dir)
-        db.query(VideoJob).filter(VideoJob.id == job_id).delete() 
+        db.delete(job) 
         
         # Update File
         if file_rec:
@@ -249,6 +270,7 @@ def process_join(payload):
         logger.info(f"Done video: {output_path}", file_id=file_id)
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Join Error: {e}")
         if file_rec:
             file_rec.status = "ERROR"
@@ -258,7 +280,7 @@ def process_join(payload):
         db.close()
 
 if __name__ == "__main__":
-    logger.info("Video Worker Started (Postgres)")
+    logger.info("Video Worker Started")
     while True:
         task = r.blpop([QUEUE_VIDEO_JOIN, QUEUE_VIDEO_ENCODE, QUEUE_VIDEO_SPLIT], timeout=10)
         if task:

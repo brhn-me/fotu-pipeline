@@ -69,7 +69,7 @@ def process_scan(payload):
             logger.error(f"Source {source_id} not found")
             return
             
-        logger.info(f"Scanning source {source_id} ({source.path})...", extra={"source_id": source_id, "path": source.path})
+        logger.info(f"Scanning source: {source.path}...", extra={"source_id": source_id, "path": source.path})
             
         source.status = "SCANNING"
         source.error_message = None # Clear previous error
@@ -134,7 +134,7 @@ def process_scan(payload):
                 db.commit()
                 
                 if queue_name:
-                    logger.info(f"Queuing {new_file.type}: {file_name}", extra={"file_id": file_id})
+                    logger.info(f"Queuing {new_file.type.lower()}: {file_name}", extra={"file_id": file_id})
                     payload = json.dumps({"path": file_path, "id": file_id})
                     r.rpush(queue_name, payload)
                     # Queue Thumb

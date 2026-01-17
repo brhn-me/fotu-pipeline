@@ -37,8 +37,8 @@ export function FileCard({ file }: { file: FileItem }) {
 
                     {/* Video Progress */}
                     {file.type === 'VIDEO' && file.status !== 'DONE' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
-                            <div className="h-full bg-blue-500" style={{ width: `${file.video_progress}%` }} />
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 z-10">
+                            <div className="h-full bg-blue-500 transition-all duration-300 animate-stripes" style={{ width: `${file.video_progress || 0}%` }} />
                         </div>
                     )}
 
@@ -126,6 +126,32 @@ export function FileCard({ file }: { file: FileItem }) {
                         )}
                     </div>
 
+
+
+                    {/* Video Specific Metadata */}
+                    {file.type === 'VIDEO' && (
+                        <div className="space-y-0.5 pt-1 border-t border-gray-50">
+                            {file.metadata?.duration && (
+                                <InfoRow
+                                    label="Duration"
+                                    value={formatDuration(file.metadata.duration)}
+                                    valueClass="font-mono text-gray-700"
+                                />
+                            )}
+                            {file.metadata?.width && file.metadata?.height && (
+                                <InfoRow
+                                    label="Resolution"
+                                    value={`${file.metadata.width}x${file.metadata.height}`}
+                                    valueClass="font-mono text-gray-600"
+                                />
+                            )}
+                            <div className="flex justify-between text-xs text-gray-500 font-mono">
+                                <span className="truncate max-w-[150px]" title={file.metadata?.codec}>{file.metadata?.codec}</span>
+                                {file.metadata?.framerate && <span>{file.metadata.framerate} fps</span>}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Sizes Section */}
                     <div className="space-y-0.5 pt-1 border-t border-gray-50">
                         <InfoRow
@@ -151,7 +177,7 @@ export function FileCard({ file }: { file: FileItem }) {
                         )}
                     </div>
                 </div>
-            </div>
+            </div >
 
 
             {/* Logs Modal */}
@@ -216,5 +242,11 @@ function Thumb({ id, hasThumb }: { id: string, hasThumb: boolean }) {
             loading="lazy"
         />
     )
+}
+
+function formatDuration(seconds: number) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
