@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { PhotoIcon, XMarkIcon, MapPinIcon } from '@heroicons/react/24/outline';
-import { type FileItem } from './types';
-import { API_Base } from './config';
-import { StatusBadge } from './components/StatusBadge';
-import { formatBytes } from './utils';
+import { type FileItem } from '../types';
+import { API_Base } from '../config';
+import { StatusBadge } from './StatusBadge';
+import { formatBytes } from '../utils';
 import { LogsViewer } from './LogsViewer';
 import { MapModal } from './MapModal';
 import { ComparisonModal } from './ComparisonModal';

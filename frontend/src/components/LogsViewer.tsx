@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-
-const API_Base = "http://localhost:8000/api";
+import { API_Base } from '../config';
 
 interface LogEntry {
     timestamp: string;
@@ -49,7 +48,7 @@ export function LogsViewer({ fileId, service, height = "h-96" }: { fileId?: stri
             </div>
             <div className="flex-1 overflow-auto p-4 font-mono text-xs space-y-1.5 bg-white">
                 {logs.length === 0 && !loading && <div className="text-gray-400 italic">No logs found</div>}
-                {logs.map((log, i) => (
+                {logs.map((log: LogEntry, i: number) => (
                     <div key={i} className="flex gap-3 hover:bg-gray-50 p-0.5 rounded -mx-0.5">
                         <span className="text-gray-400 shrink-0 select-none w-20">
                             {(() => {

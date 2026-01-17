@@ -1,9 +1,9 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { XMarkIcon, ArrowsPointingInIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { type FileItem } from './types';
-import { API_Base } from './config';
-import { formatBytes } from './utils';
+import { type FileItem } from '../types';
+import { API_Base } from '../config';
+import { formatBytes } from '../utils';
 
 interface Props {
     file: FileItem;
@@ -27,13 +27,11 @@ export function ComparisonModal({ file, onClose }: Props) {
     // Calculate compression stats
     let compressionStat = null;
     if (file.output_size_bytes && file.size_bytes) {
-        const diff = file.size_bytes - file.output_size_bytes;
-        const pct = (diff / file.size_bytes) * 100;
-        if (pct >= 0) {
-            compressionStat = { label: 'Reduction', value: pct.toFixed(1) + '%' };
-        } else {
-            compressionStat = { label: 'Increase', value: Math.abs(pct).toFixed(1) + '%' };
-        }
+        const ratio = (file.output_size_bytes / file.size_bytes) * 100;
+        compressionStat = {
+            isReduction: ratio < 100,
+            value: ratio.toFixed(1) + '%'
+        };
     }
 
     // Update zoom display based on scale and image size
@@ -270,9 +268,9 @@ export function ComparisonModal({ file, onClose }: Props) {
                     {compressionStat && (
                         <div
                             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20"
-                            title={compressionStat.label === 'Reduction' ? "File Size Reduced" : "File Size Increased"}
+                            title={compressionStat.isReduction ? "File Size Reduced" : "File Size Increased"}
                         >
-                            <div className={`px-4 py-1.5 rounded-full font-bold shadow-lg border backdrop-blur-md ${compressionStat.label === 'Reduction'
+                            <div className={`px-4 py-1.5 rounded-full font-bold shadow-lg border backdrop-blur-md ${compressionStat.isReduction
                                 ? 'bg-green-500/20 text-green-400 border-green-500/30'
                                 : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
                                 }`}>
