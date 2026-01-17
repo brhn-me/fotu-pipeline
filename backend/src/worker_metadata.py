@@ -26,6 +26,35 @@ def parse_date(date_str):
             continue
     return None
 
+def get_int(value):
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, str)):
+        try:
+            # Handle "1920 1080" or "1920x1080" by taking the first part
+            s = str(value).replace('x', ' ').split()
+            if s:
+                return int(float(s[0]))
+        except (ValueError, TypeError):
+            pass
+    return None
+
+def get_float(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            s = value.replace('x', ' ').split()
+            if s:
+                return float(s[0])
+        except (ValueError, TypeError):
+            pass
+    return None
+
 def process_metadata(payload):
     file_id = payload.get("id")
     file_path = payload.get("path")
@@ -56,30 +85,39 @@ def process_metadata(payload):
 
             # Global info
             target.mime_type = meta.get("File:MIMEType")
-            target.width = meta.get("File:ImageWidth") or meta.get("EXIF:ExifImageWidth") or meta.get("Composite:ImageSize", "").split('x')[0]
-            target.height = meta.get("File:ImageHeight") or meta.get("EXIF:ExifImageHeight") or (meta.get("Composite:ImageSize", "").split('x')[1] if 'x' in meta.get("Composite:ImageSize", "") else None)
+            
+            # Width / Height logic
+            img_size = meta.get("Composite:ImageSize") or meta.get("File:ImageSize")
+            w, h = None, None
+            if img_size and isinstance(img_size, str):
+                parts = img_size.replace('x', ' ').split()
+                if len(parts) >= 2:
+                    w, h = get_int(parts[0]), get_int(parts[1])
+            
+            target.width = get_int(meta.get("File:ImageWidth")) or get_int(meta.get("EXIF:ExifImageWidth")) or get_int(meta.get("Video:ImageWidth")) or w
+            target.height = get_int(meta.get("File:ImageHeight")) or get_int(meta.get("EXIF:ExifImageHeight")) or get_int(meta.get("Video:ImageHeight")) or h
             
             # Taken At - prioritize EXIF
             taken_at_str = meta.get("EXIF:DateTimeOriginal") or meta.get("QuickTime:CreateDate") or meta.get("H264:DateTimeOriginal") or meta.get("File:FileModifyDate")
             target.taken_at = parse_date(taken_at_str)
             
             # GPS
-            target.lat = meta.get("Composite:GPSLatitude")
-            target.lon = meta.get("Composite:GPSLongitude")
+            target.lat = get_float(meta.get("Composite:GPSLatitude") or meta.get("EXIF:GPSLatitude"))
+            target.lon = get_float(meta.get("Composite:GPSLongitude") or meta.get("EXIF:GPSLongitude"))
 
             # Photo Specific
             target.make = meta.get("EXIF:Make")
             target.model = meta.get("EXIF:Model")
             target.lens = meta.get("EXIF:LensModel") or meta.get("EXIF:LensInfo")
-            target.iso = meta.get("EXIF:ISO")
-            target.aperture = meta.get("Composite:Aperture") or meta.get("EXIF:FNumber")
-            target.exposure_time = meta.get("EXIF:ExposureTime")
-            target.focal_length = meta.get("EXIF:FocalLength")
+            target.iso = get_int(meta.get("EXIF:ISO"))
+            target.aperture = get_float(meta.get("Composite:Aperture") or meta.get("EXIF:FNumber"))
+            target.exposure_time = str(meta.get("EXIF:ExposureTime")) if meta.get("EXIF:ExposureTime") else None
+            target.focal_length = get_float(meta.get("EXIF:FocalLength"))
 
             # Video Specific
-            target.duration = meta.get("QuickTime:Duration") or meta.get("Composite:Duration")
-            target.codec = meta.get("QuickTime:HandlerDescription") or meta.get("Video:Codec")
-            target.framerate = meta.get("Composite:VideoFrameRate") or meta.get("QuickTime:VideoFrameRate")
+            target.duration = get_float(meta.get("QuickTime:Duration") or meta.get("Composite:Duration"))
+            target.codec = meta.get("QuickTime:HandlerDescription") or meta.get("Video:Codec") or meta.get("Video:VideoCodec")
+            target.framerate = get_float(meta.get("Composite:VideoFrameRate") or meta.get("QuickTime:VideoFrameRate"))
 
             db.commit()
             logger.info(f"Metadata stored for {file_id}", extra={"file_id": file_id})
