@@ -3,7 +3,7 @@ import { LogsViewer } from '../components/LogsViewer';
 
 export function LogsPage() {
     const [service, setService] = useState('worker.scanner');
-    const services = ['worker.scanner', 'worker.photo', 'worker.video', 'worker.raw', 'worker.thumb', 'api'];
+    const services = ['worker.scanner', 'worker.metadata', 'worker.photo', 'worker.video', 'worker.raw', 'worker.thumb', 'api'];
 
     return (
         <div className="space-y-6">

@@ -1,8 +1,8 @@
-"""Initial migration with cascade
+"""Refined metadata schema
 
-Revision ID: ed475d237ba7
+Revision ID: 9e0cf371198c
 Revises: 
-Create Date: 2026-01-17 10:45:18.115391
+Create Date: 2026-01-17 15:49:06.038132
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ed475d237ba7'
+revision: str = '9e0cf371198c'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -29,6 +29,7 @@ def upgrade() -> None:
     op.create_table('files',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('path', sa.String(), nullable=True),
+    sa.Column('hash', sa.String(), nullable=True),
     sa.Column('status', sa.String(), nullable=True),
     sa.Column('type', sa.String(), nullable=True),
     sa.Column('output_path', sa.String(), nullable=True),
@@ -39,14 +40,12 @@ def upgrade() -> None:
     sa.Column('compression_ratio', sa.Float(), nullable=True),
     sa.Column('file_create_date', sa.DateTime(), nullable=True),
     sa.Column('file_update_date', sa.DateTime(), nullable=True),
-    sa.Column('meta_create_date', sa.DateTime(), nullable=True),
-    sa.Column('meta_camera', sa.String(), nullable=True),
-    sa.Column('meta_gps', sa.String(), nullable=True),
     sa.Column('error_message', sa.String(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_files_hash'), 'files', ['hash'], unique=False)
     op.create_index(op.f('ix_files_id'), 'files', ['id'], unique=False)
     op.create_index(op.f('ix_files_path'), 'files', ['path'], unique=True)
     op.create_table('sources',
@@ -59,6 +58,30 @@ def upgrade() -> None:
     sa.UniqueConstraint('path')
     )
     op.create_index(op.f('ix_sources_id'), 'sources', ['id'], unique=False)
+    op.create_table('file_metadata',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('file_id', sa.String(), nullable=True),
+    sa.Column('mime_type', sa.String(), nullable=True),
+    sa.Column('width', sa.Integer(), nullable=True),
+    sa.Column('height', sa.Integer(), nullable=True),
+    sa.Column('taken_at', sa.DateTime(), nullable=True),
+    sa.Column('lat', sa.Float(), nullable=True),
+    sa.Column('lon', sa.Float(), nullable=True),
+    sa.Column('make', sa.String(), nullable=True),
+    sa.Column('model', sa.String(), nullable=True),
+    sa.Column('lens', sa.String(), nullable=True),
+    sa.Column('iso', sa.Integer(), nullable=True),
+    sa.Column('aperture', sa.Float(), nullable=True),
+    sa.Column('exposure_time', sa.String(), nullable=True),
+    sa.Column('focal_length', sa.Float(), nullable=True),
+    sa.Column('duration', sa.Float(), nullable=True),
+    sa.Column('codec', sa.String(), nullable=True),
+    sa.Column('framerate', sa.Float(), nullable=True),
+    sa.ForeignKeyConstraint(['file_id'], ['files.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('file_id')
+    )
+    op.create_index(op.f('ix_file_metadata_id'), 'file_metadata', ['id'], unique=False)
     op.create_table('video_jobs',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('file_id', sa.String(), nullable=True),
@@ -90,10 +113,13 @@ def downgrade() -> None:
     op.drop_table('video_chunks')
     op.drop_index(op.f('ix_video_jobs_id'), table_name='video_jobs')
     op.drop_table('video_jobs')
+    op.drop_index(op.f('ix_file_metadata_id'), table_name='file_metadata')
+    op.drop_table('file_metadata')
     op.drop_index(op.f('ix_sources_id'), table_name='sources')
     op.drop_table('sources')
     op.drop_index(op.f('ix_files_path'), table_name='files')
     op.drop_index(op.f('ix_files_id'), table_name='files')
+    op.drop_index(op.f('ix_files_hash'), table_name='files')
     op.drop_table('files')
     op.drop_table('config')
     # ### end Alembic commands ###

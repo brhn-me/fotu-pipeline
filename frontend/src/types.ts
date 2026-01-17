@@ -17,10 +17,26 @@ export interface FileItem {
     compression_ratio: number;
     file_create_date: string;
     file_update_date: string;
-    meta_create_date: string;
-    meta_camera: string;
-    meta_gps: string; // "lat,lon"
     sidecar_path: string;
+    hash?: string;
+    metadata?: {
+        mime_type?: string;
+        width?: number;
+        height?: number;
+        taken_at?: string;
+        lat?: number;
+        lon?: number;
+        make?: string;
+        model?: string;
+        lens?: string;
+        iso?: number;
+        aperture?: number;
+        exposure_time?: string;
+        focal_length?: number;
+        duration?: number;
+        codec?: string;
+        framerate?: number;
+    };
 }
 
 export interface Source {

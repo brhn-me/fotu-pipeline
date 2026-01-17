@@ -18,7 +18,8 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup_event():
-    init_db()
+    # init_db()  # Rely on Alembic migrations
+    pass
 
 app.add_middleware(
     CORSMiddleware,
@@ -163,10 +164,34 @@ def list_files(db: Session = Depends(get_db)):
             elif f.status == "DONE":
                 progress = 100
         
+        # Prepare metadata
+        meta_dict = {}
+        if f.meta_info:
+            m = f.meta_info
+            meta_dict = {
+                "mime_type": m.mime_type,
+                "width": m.width,
+                "height": m.height,
+                "taken_at": m.taken_at,
+                "lat": m.lat,
+                "lon": m.lon,
+                "make": m.make,
+                "model": m.model,
+                "lens": m.lens,
+                "iso": m.iso,
+                "aperture": m.aperture,
+                "exposure_time": m.exposure_time,
+                "focal_length": m.focal_length,
+                "duration": m.duration,
+                "codec": m.codec,
+                "framerate": m.framerate
+            }
+
         results.append({
             "id": f.id,
             "name": os.path.basename(f.path) if f.path else f.id,
             "path": f.path,
+            "hash": f.hash,
             "status": f.status,
             "output_path": f.output_path,
             "error_message": f.error_message,
@@ -174,17 +199,14 @@ def list_files(db: Session = Depends(get_db)):
             "video_progress": progress,
             "chunks_done": chunks_done,
             "chunks_total": chunks_total,
-            # Phase 3 Fields
             "size_bytes": f.size_bytes,
             "output_size_bytes": f.output_size_bytes,
             "compression_ratio": f.compression_ratio,
             "file_create_date": f.file_create_date,
             "file_update_date": f.file_update_date,
-            "meta_create_date": f.meta_create_date,
-            "meta_camera": f.meta_camera,
-            "meta_gps": f.meta_gps,
             "sidecar_path": f.sidecar_path,
-            "thumbnail_path": f.thumbnail_path
+            "thumbnail_path": f.thumbnail_path,
+            "metadata": meta_dict
         })
     return results
 

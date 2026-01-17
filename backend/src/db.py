@@ -17,6 +17,7 @@ QUEUE_VIDEO_ENCODE = "queue:video_encode"
 QUEUE_VIDEO_JOIN = "queue:video_join"
 QUEUE_RAW = "queue:raw"
 QUEUE_THUMB = "queue:thumb"
+QUEUE_METADATA = "queue:metadata"
 
 # Postgres Connection
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://pipeline:pipeline@localhost:5432/pipeline")
@@ -43,6 +44,7 @@ class File(Base):
     
     id = Column(String, primary_key=True, index=True)
     path = Column(String, unique=True, index=True)
+    hash = Column(String, index=True, nullable=True) # SHA256 of content
     status = Column(String, default="QUEUED") # QUEUED, PROCESSING, DONE, ERROR, REVIEW
     type = Column(String) # PHOTO, VIDEO, RAW, UNKNOWN
     
@@ -56,18 +58,47 @@ class File(Base):
     output_size_bytes = Column(BigInteger, nullable=True)
     compression_ratio = Column(Float, nullable=True)
     
-    # Metadata
+    # Dates
     file_create_date = Column(DateTime, nullable=True)
     file_update_date = Column(DateTime, nullable=True)
-    meta_create_date = Column(DateTime, nullable=True) # From EXIF
-    meta_camera = Column(String, nullable=True)
-    meta_gps = Column(String, nullable=True)
     
     error_message = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationships
     video_job = relationship("VideoJob", back_populates="file", uselist=False, cascade="all, delete-orphan")
+    meta_info = relationship("FileMetadata", back_populates="file", uselist=False, cascade="all, delete-orphan")
+
+class FileMetadata(Base):
+    __tablename__ = "file_metadata"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(String, ForeignKey("files.id"), unique=True)
+    
+    # Global
+    mime_type = Column(String, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    taken_at = Column(DateTime, nullable=True) # EXIF/Metadata date
+    lat = Column(Float, nullable=True) # Latitude
+    lon = Column(Float, nullable=True) # Longitude
+    
+    # Photo specific
+    make = Column(String, nullable=True)
+    model = Column(String, nullable=True)
+    lens = Column(String, nullable=True)
+    iso = Column(Integer, nullable=True)
+    aperture = Column(Float, nullable=True)
+    exposure_time = Column(String, nullable=True)
+    focal_length = Column(Float, nullable=True)
+    
+    # Video specific
+    duration = Column(Float, nullable=True)
+    codec = Column(String, nullable=True)
+    framerate = Column(Float, nullable=True)
+    
+    file = relationship("File", back_populates="meta_info")
 
 class VideoJob(Base):
     __tablename__ = "video_jobs"

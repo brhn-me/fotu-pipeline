@@ -74,7 +74,11 @@ export function FileCard({ file }: { file: FileItem }) {
 
                     {/* Dates Section */}
                     <div className="space-y-0.5">
-                        <InfoRow label="Photo Taken" value={new Date(file.meta_create_date).toLocaleString()} />
+                        <InfoRow
+                            label="Photo Taken"
+                            value={file.metadata?.taken_at ? new Date(file.metadata.taken_at).toLocaleString() : 'No EXIF Date'}
+                            valueClass={file.metadata?.taken_at ? "text-gray-900 font-bold" : "text-gray-400"}
+                        />
                         <InfoRow label="File Created" value={new Date(file.file_create_date).toLocaleString()} />
                         <InfoRow label="File Modified" value={new Date(file.file_update_date).toLocaleString()} />
                     </div>
@@ -84,14 +88,17 @@ export function FileCard({ file }: { file: FileItem }) {
                         {/* Location */}
                         <div
                             className="flex justify-between text-xs items-center h-5 cursor-pointer group/loc"
-                            onClick={(e) => { e.stopPropagation(); if (file.meta_gps) setShowMap(true); }}
-                            title={file.meta_gps ? "Click to view map" : undefined}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (file.metadata?.lat && file.metadata?.lon) setShowMap(true);
+                            }}
+                            title={file.metadata?.lat ? "Click to view map" : undefined}
                         >
                             <span className="text-gray-600">Location:</span>
-                            {file.meta_gps ? (
+                            {file.metadata?.lat && file.metadata?.lon ? (
                                 <span className="flex items-center gap-0.5 text-blue-400 underline decoration-dotted font-mono outline-none">
                                     <MapPinIcon className="w-3.5 h-3.5 -mt-0.5" />
-                                    <span>{file.meta_gps.split(',').map(n => parseFloat(n).toFixed(2)).join(',')}</span>
+                                    <span>{file.metadata.lat.toFixed(3)}, {file.metadata.lon.toFixed(3)}</span>
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-0.5 text-rose-400 font-mono outline-none">
@@ -104,9 +111,19 @@ export function FileCard({ file }: { file: FileItem }) {
                         {/* Camera */}
                         <InfoRow
                             label="Camera"
-                            value={file.meta_camera || 'Unknown'}
-                            valueClass={file.meta_camera ? "font-mono text-gray-700" : "text-gray-400"}
+                            value={file.metadata?.model ? `${file.metadata.make || ''} ${file.metadata.model}`.trim() : 'Unknown'}
+                            valueClass={file.metadata?.model ? "font-mono text-gray-700" : "text-gray-400"}
                         />
+                        {file.metadata?.lens && (
+                            <InfoRow label="Lens" value={file.metadata.lens} valueClass="font-mono text-gray-400 scale-90 origin-right" />
+                        )}
+                        {(file.metadata?.iso || file.metadata?.aperture) && (
+                            <div className="flex justify-end gap-2 text-[10px] text-gray-400 font-mono">
+                                {file.metadata.iso && <span>ISO {file.metadata.iso}</span>}
+                                {file.metadata.aperture && <span>f/{file.metadata.aperture}</span>}
+                                {file.metadata.exposure_time && <span>{file.metadata.exposure_time}s</span>}
+                            </div>
+                        )}
                     </div>
 
                     {/* Sizes Section */}
@@ -158,8 +175,8 @@ export function FileCard({ file }: { file: FileItem }) {
 
             {/* Map Modal */}
             {
-                showMap && file.meta_gps && (
-                    <MapModal gps={file.meta_gps} onClose={() => setShowMap(false)} />
+                showMap && file.metadata?.lat && file.metadata?.lon && (
+                    <MapModal gps={`${file.metadata.lat},${file.metadata.lon}`} onClose={() => setShowMap(false)} />
                 )
             }
 

@@ -6,7 +6,10 @@ import glob
 from datetime import datetime
 from sqlalchemy.orm import Session
 from src.db import r, engine, SessionLocal, File, Source, Config
-from src.db import QUEUE_SCAN, QUEUE_PHOTO, QUEUE_VIDEO_SPLIT, QUEUE_RAW, QUEUE_THUMB
+from src.db import (
+    QUEUE_SCAN, QUEUE_PHOTO, QUEUE_VIDEO_SPLIT, QUEUE_RAW, QUEUE_THUMB,
+    QUEUE_METADATA
+)
 from src.logger import get_logger
 
 logger = get_logger("worker.scanner")
@@ -26,6 +29,18 @@ VIDEO_EXTS = {
 
 def get_file_id(path):
     return hashlib.md5(path.encode()).hexdigest()
+
+def calculate_hash(path):
+    """Calculate SHA256 of file content."""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.error(f"Error hashing {path}: {e}")
+        return None
 
 def get_file_stats(path):
     stats = os.stat(path)
@@ -85,10 +100,12 @@ def process_scan(payload):
 
                 stats = get_file_stats(file_path)
                 sidecar = find_sidecar(file_path)
+                file_hash = calculate_hash(file_path)
                 
                 new_file = File(
                     id=file_id, 
                     path=file_path,
+                    hash=file_hash,
                     size_bytes=stats["size_bytes"],
                     file_create_date=stats["created_at"],
                     file_update_date=stats["updated_at"],
@@ -122,7 +139,13 @@ def process_scan(payload):
                     r.rpush(queue_name, payload)
                     # Queue Thumb
                     r.rpush(QUEUE_THUMB, payload)
+                    # Queue Metadata extraction
+                    r.rpush(QUEUE_METADATA, payload)
                     cnt += 1
+                elif new_file.type == "UNKNOWN":
+                    # Even UNKNOWN might have some metadata (MIME, stats)
+                    payload = json.dumps({"path": file_path, "id": file_id})
+                    r.rpush(QUEUE_METADATA, payload)
                     
         source.last_scanned = datetime.utcnow()
         source.status = "IDLE"

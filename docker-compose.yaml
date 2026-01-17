@@ -129,6 +129,20 @@ services:
       - redis
       - db
 
+  worker-metadata:
+    build: ./backend
+    command: python -m src.worker_metadata
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
   frontend:
     build: ./frontend
     ports:
