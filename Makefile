@@ -38,6 +38,16 @@ clean:
 	rm -rf frontend/dist
 	docker compose down -v
 
+# Reset everything (database, logs, data)
+reset:
+	docker compose down -v
+	sudo rm -rf data/output/*
+	sudo rm -rf data/temp/*
+	$(MAKE) up
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	$(MAKE) db-migrate
+
 # Help
 help:
 	@echo "Available targets:"
@@ -51,3 +61,4 @@ help:
 	@echo "  frontend-install  - Install frontend dependencies"
 	@echo "  backend-install   - Install backend dependencies"
 	@echo "  clean             - Cleanup pycache, build artifacts, and docker volumes"
+	@echo "  reset             - Wipe EVERYTHING (DB, logs, output) and start fresh"
