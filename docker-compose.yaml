@@ -1,0 +1,136 @@
+services:
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - ./promtail-config.yaml:/etc/promtail/config.yaml
+    command: -config.file=/etc/promtail/config.yaml
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=pipeline
+    depends_on:
+      - loki
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6389:6379"
+    volumes:
+      - redis_data:/data
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=pipeline
+      - POSTGRES_PASSWORD=pipeline
+      - POSTGRES_DB=pipeline
+    ports:
+      - "5442:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: ./backend
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  worker-scanner:
+    build: ./backend
+    command: python -m src.worker_scanner
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  worker-photo:
+    build: ./backend
+    command: python -m src.worker_photo
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  worker-video:
+    build: ./backend
+    command: python -m src.worker_video
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  worker-raw:
+    build: ./backend
+    command: python -m src.worker_raw
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  worker-thumb:
+    build: ./backend
+    command: python -m src.worker_thumb
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    depends_on:
+      - api
+
+volumes:
+  redis_data:
+  postgres_data:
