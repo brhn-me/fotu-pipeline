@@ -28,7 +28,9 @@ scrape_configs:
             level: level
             msg: message
             file_id: file_id
+            service: service
           source: output
       - labels:
           file_id:
           level:
+          service:

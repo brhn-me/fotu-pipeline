@@ -36,6 +36,7 @@ class Source(Base):
     path = Column(String, unique=True)
     status = Column(String, default="IDLE") # IDLE, SCANNING
     last_scanned = Column(DateTime, nullable=True)
+    error_message = Column(String, nullable=True)
 
 class File(Base):
     __tablename__ = "files"
@@ -66,7 +67,7 @@ class File(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    video_job = relationship("VideoJob", back_populates="file", uselist=False)
+    video_job = relationship("VideoJob", back_populates="file", uselist=False, cascade="all, delete-orphan")
 
 class VideoJob(Base):
     __tablename__ = "video_jobs"
@@ -77,7 +78,7 @@ class VideoJob(Base):
     job_dir = Column(String)
     
     file = relationship("File", back_populates="video_job")
-    chunks = relationship("VideoChunk", back_populates="job")
+    chunks = relationship("VideoChunk", back_populates="job", cascade="all, delete-orphan")
 
 class VideoChunk(Base):
     __tablename__ = "video_chunks"

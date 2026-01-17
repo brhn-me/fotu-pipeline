@@ -67,6 +67,9 @@ def add_source(req: SourceRequest, db: Session = Depends(get_db)):
     existing = db.query(Source).filter(Source.path == req.path).first()
     if existing:
         raise HTTPException(400, "Source already exists")
+
+    if not os.path.exists(req.path):
+        raise HTTPException(400, f"Path '{req.path}' does not exist on server")
     
     # Init source
     new_source = Source(path=req.path, status="QUEUED")
@@ -76,6 +79,68 @@ def add_source(req: SourceRequest, db: Session = Depends(get_db)):
     # Trigger scan
     r.rpush(QUEUE_SCAN, json.dumps({"source_id": new_source.id}))
     return new_source
+
+@app.post("/api/sources/{source_id}/scan")
+def scan_source(source_id: int, db: Session = Depends(get_db)):
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(404, "Source not found")
+        
+    source.status = "QUEUED"
+    db.commit()
+    
+    # Trigger scan
+    r.rpush(QUEUE_SCAN, json.dumps({"source_id": source_id}))
+    return {"status": "scanning", "id": source_id}
+
+@app.delete("/api/sources/{source_id}")
+def delete_source(source_id: int, db: Session = Depends(get_db)):
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(404, "Source not found")
+        
+    # Cascade delete files and physical outputs
+    # Since we have cascade delete on DB side (conceptually), we assume DB cleanup is fine?
+    # Actually we just added cascade="all, delete-orphan" to relationships in code, checks db.py.
+    # But we still need to delete physical files!
+    
+    files = db.query(File).filter(File.path.startswith(source.path)).all()
+    count = 0
+    for f in files:
+        # Delete output
+        if f.output_path and os.path.exists(f.output_path):
+            try:
+                os.remove(f.output_path)
+            except OSError:
+                pass
+        
+        # Delete thumb
+        if f.thumbnail_path and os.path.exists(f.thumbnail_path):
+            try:
+                os.remove(f.thumbnail_path)
+            except OSError:
+                pass
+                
+        # Delete sidecar if generated? Usually sidecar is source side, but we might have generated one?
+        # If sidecar_path is in source directory, we should probably leave it alone or follow spec?
+        # User said "if a source is deleted all output, thumbs, db entries are to be removed".
+        # If sidecar is metadata we created, remove it. If it's source file sidecar, keep it?
+        # Assuming we only delete generated stuff.
+        # But if we delete the File record, we lose track.
+        
+        count += 1
+        
+    # Delete source record. 
+    # Because we don't have a direct relationship between Source and File in DB (just path prefix logic),
+    # verifying if we need to manually delete files.
+    # Yes, we do.
+    
+    for f in files:
+        db.delete(f)
+        
+    db.delete(source)
+    db.commit()
+    return {"status": "deleted", "id": source_id, "files_removed": count}
 
 @app.get("/api/files")
 def list_files(db: Session = Depends(get_db)):
@@ -176,6 +241,27 @@ def view_file(fid: str, kind: str, db: Session = Depends(get_db)):
 
 LOKI_URL = "http://loki:3100/loki/api/v1/query_range"
 
+def parse_loki_entry(entry):
+    try:
+        raw = json.loads(entry[1])
+        log_entry = raw.copy()
+        # Docker logs often wrap the app log in a 'log' field
+        if isinstance(raw, dict) and "log" in raw:
+            if isinstance(raw["log"], str):
+                try:
+                    inner = json.loads(raw["log"])
+                    if isinstance(inner, dict):
+                        log_entry.update(inner)
+                except:
+                    # Inner log is just text
+                    log_entry["message"] = raw["log"].strip()
+        
+        if not log_entry.get("timestamp"):
+             log_entry["timestamp"] = entry[0]
+        return log_entry
+    except:
+        return {"message": entry[1], "timestamp": entry[0]}
+
 @app.get("/api/logs/service/{service_name}")
 def get_service_logs(service_name: str, limit: int = 100):
     # Query: {service="service_name"}
@@ -188,16 +274,40 @@ def get_service_logs(service_name: str, limit: int = 100):
         if "data" in data and "result" in data["data"]:
             for stream in data["data"]["result"]:
                 for entry in stream["values"]:
-                    try:
-                        log_entry = json.loads(entry[1])
-                        logs.append(log_entry)
-                    except:
-                        logs.append({"message": entry[1], "timestamp": entry[0]})
+                    logs.append(parse_loki_entry(entry))
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return logs
     except Exception as e:
         logger.error(f"Loki Error: {e}")
         return []
+
+@app.get("/api/fs/ls")
+def list_fs(path: str = ""):
+    MEDIA_ROOT = "/media_root"
+    
+    # Sanitize path
+    # Remove leading slashes to join correctly
+    clean_path = path.lstrip("/")
+    full_path = os.path.normpath(os.path.join(MEDIA_ROOT, clean_path))
+    
+    # Security check: Ensure we are stuck in MEDIA_ROOT
+    if not full_path.startswith(MEDIA_ROOT):
+         raise HTTPException(400, "Invalid path")
+         
+    if not os.path.exists(full_path):
+        raise HTTPException(404, "Path not found")
+        
+    if not os.path.isdir(full_path):
+        raise HTTPException(400, "Not a directory")
+        
+    try:
+        entries = os.listdir(full_path)
+        dirs = [d for d in entries if os.path.isdir(os.path.join(full_path, d))]
+        dirs.sort()
+        return dirs
+    except Exception as e:
+        logger.error(f"FS Error: {e}")
+        raise HTTPException(500, str(e))
 
 @app.get("/api/logs/file/{file_id}")
 def get_file_logs(file_id: str, limit: int = 100):
@@ -211,11 +321,7 @@ def get_file_logs(file_id: str, limit: int = 100):
         if "data" in data and "result" in data["data"]:
             for stream in data["data"]["result"]:
                 for entry in stream["values"]:
-                    try:
-                        log_entry = json.loads(entry[1])
-                        logs.append(log_entry)
-                    except:
-                        logs.append({"message": entry[1], "timestamp": entry[0]})
+                    logs.append(parse_loki_entry(entry))
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return logs
     except Exception as e:

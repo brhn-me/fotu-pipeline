@@ -46,8 +46,7 @@ def find_sidecar(path):
 
 def process_scan(payload):
     source_id = payload.get("source_id")
-    logger.info(f"Scanning source {source_id}...", extra={"source_id": source_id})
-    
+    # Query source first to get path for logging
     db: Session = SessionLocal()
     try:
         source = db.query(Source).filter(Source.id == source_id).first()
@@ -55,13 +54,18 @@ def process_scan(payload):
             logger.error(f"Source {source_id} not found")
             return
             
+        logger.info(f"Scanning source {source_id} ({source.path})...", extra={"source_id": source_id, "path": source.path})
+            
         source.status = "SCANNING"
+        source.error_message = None # Clear previous error
         db.commit()
         
         source_dir = source.path
         if not os.path.exists(source_dir):
-            logger.error(f"Path {source_dir} does not exist", extra={"source_id": source_id})
-            source.status = "ERROR" # Or IDLE?
+            msg = f"Path {source_dir} does not exist"
+            logger.error(msg, extra={"source_id": source_id})
+            source.status = "ERROR"
+            source.error_message = msg
             db.commit()
             return
 
@@ -129,6 +133,7 @@ def process_scan(payload):
         logger.error(f"Scan error: {e}", extra={"source_id": source_id})
         if source:
              source.status = "ERROR"
+             source.error_message = str(e)
              db.commit()
     finally:
         db.close()

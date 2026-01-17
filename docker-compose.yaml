@@ -46,6 +46,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     ports:
       - "8000:8000"
     environment:
@@ -61,6 +62,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
@@ -74,6 +76,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
@@ -87,6 +90,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
@@ -100,6 +104,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
@@ -113,6 +118,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ${MEDIA_DIR:-./data}:/media_root
     environment:
       - REDIS_HOST=redis
       - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline

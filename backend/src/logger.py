@@ -39,6 +39,21 @@ class LoggerAdapter(logging.LoggerAdapter):
              extra["file_id"] = kwargs.pop("file_id")
         
         # Add other kwargs as extra fields
-        extra["extra_kvs"] = kwargs
+        # Identify non-reserved keys that should be moved to extra
+        reserved = {'extra', 'exc_info', 'stack_info', 'stacklevel'}
+        custom_keys = [k for k in kwargs.keys() if k not in reserved]
         
-        return msg, {"extra": extra}
+        extra_kvs = {}
+        # Move custom fields to extra_kvs and REMOVE from kwargs to avoid TypeError in logger
+        for k in custom_keys:
+            extra_kvs[k] = kwargs.pop(k)
+            
+        # Also include existing extra fields
+        extra_kvs.update(extra)
+        
+        extra["extra_kvs"] = extra_kvs
+        
+        # Ensure extra is updated in kwargs
+        kwargs["extra"] = extra
+        
+        return msg, kwargs
