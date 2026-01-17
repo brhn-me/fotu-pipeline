@@ -1,43 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   HomeIcon, FolderIcon, PhotoIcon, VideoCameraIcon, Cog6ToothIcon,
-  PlusIcon, TableCellsIcon, CommandLineIcon, XMarkIcon, TrashIcon, ArrowPathIcon
+  TableCellsIcon, CommandLineIcon, TrashIcon, ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { LogsViewer } from './LogsViewer';
 
-interface Source {
-  id: number;
-  path: string;
-  status: string;
-  last_scanned: string;
-}
+import { type FileItem, type Source } from './types';
+import { API_Base } from './config';
+import { StatusBadge } from './components/StatusBadge';
+import { FileCard } from './FileCard';
 
-interface FileItem {
-  id: string;
-  name: string;
-  path: string;
-  status: string;
-  type: string;
-  output_path: string;
-  thumbnail_path: string;
-  error_message?: string;
-  video_progress: number;
-  chunks_done: number;
-  chunks_total: number;
-
-  // Stats
-  size_bytes: number;
-  output_size_bytes: number;
-  compression_ratio: number;
-  file_create_date: string;
-  file_update_date: string;
-  meta_create_date: string;
-  meta_camera: string;
-  meta_gps: string;
-  sidecar_path: string;
-}
-
-const API_Base = "http://localhost:8000/api";
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -71,7 +43,7 @@ function Sidebar({ activeTab, setActiveTab }: any) {
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col fixed inset-y-0 left-0 z-10">
       <div className="p-6">
         <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
-          Media Pipeline
+          Fotu Pipeline
         </h1>
       </div>
       <nav className="flex-1 px-4 space-y-1">
@@ -182,140 +154,7 @@ function FileGrid({ type }: { type: string }) {
   )
 }
 
-function FileCard({ file }: { file: FileItem }) {
-  const [showLogs, setShowLogs] = useState(false);
 
-  return (
-    <>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col group/card">
-        {/* Thumbnail Header */}
-        <div className="h-48 bg-gray-100 relative group overflow-hidden">
-          <Thumb id={file.id} hasThumb={!!file.thumbnail_path} />
-          <div className="absolute top-2 right-2">
-            <StatusBadge status={file.status} />
-          </div>
-          {file.type === 'VIDEO' && file.status !== 'DONE' && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
-              <div className="h-full bg-blue-500" style={{ width: `${file.video_progress}%` }} />
-            </div>
-          )}
-          {file.sidecar_path && (
-            <div className="absolute top-2 left-2 bg-purple-500/80 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
-              XMP
-            </div>
-          )}
-          {/* Hover Actions */}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-            <button
-              onClick={() => setShowLogs(true)}
-              className="bg-white/90 text-gray-900 rounded-full px-4 py-1.5 text-xs font-bold hover:bg-white"
-            >
-              Logs
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-4 flex-1 flex flex-col space-y-3">
-          {/* Title */}
-          <div title={file.name} className="font-semibold text-gray-900 truncate">
-            {file.name}
-          </div>
-
-          {/* Dates Section */}
-          <div className="space-y-1 pt-2 border-t border-gray-50">
-            <DateRow label="Captured" date={file.meta_create_date} highlight />
-            <DateRow label="Created" date={file.file_create_date} />
-            <DateRow label="Modified" date={file.file_update_date} />
-          </div>
-
-          {/* Metadata Badge */}
-          {file.meta_camera && (
-            <div className="text-xs text-gray-500 flex items-center bg-gray-50 px-2 py-1 rounded w-fit">
-              <PhotoIcon className="w-3 h-3 mr-1" />
-              <span className="truncate max-w-[150px]">{file.meta_camera}</span>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="flex justify-between items-end pt-2 mt-auto text-xs font-mono text-gray-500">
-            <div>
-              <div>IN: {formatBytes(file.size_bytes)}</div>
-              <div>OUT: {formatBytes(file.output_size_bytes)}</div>
-            </div>
-            {file.compression_ratio && (
-              <div className="text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded">
-                {file.compression_ratio}x
-              </div>
-            )}
-          </div>
-
-          {/* Output Link */}
-          {file.output_path && (
-            <a
-              href={`${API_Base}/files/${file.id}/view/output`}
-              target="_blank"
-              className="block w-full text-center text-sm font-medium text-blue-600 bg-blue-50 py-1.5 rounded-lg hover:bg-blue-100 transition-colors mt-2"
-            >
-              View Output
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Logs Modal */}
-      {showLogs && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <h3 className="font-bold text-lg">Logs: {file.name}</h3>
-              <button onClick={() => setShowLogs(false)} className="text-gray-500 hover:text-gray-700">
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="p-4 bg-gray-50 flex-1 overflow-hidden">
-              <LogsViewer fileId={file.id} height="h-full" />
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function DateRow({ label, date, highlight }: { label: string, date: string, highlight?: boolean }) {
-  if (!date) return null;
-  return (
-    <div className={`flex justify-between text-xs ${highlight ? 'text-blue-900 font-medium' : 'text-gray-400'}`}>
-      <span>{label}:</span>
-      <span className="font-mono">{new Date(date).toLocaleString()}</span>
-    </div>
-  )
-}
-
-function Thumb({ id, hasThumb }: { id: string, hasThumb: boolean }) {
-  if (!hasThumb) return (
-    <div className="w-full h-full flex items-center justify-center text-gray-300">
-      <PhotoIcon className="w-12 h-12" />
-    </div>
-  );
-  return (
-    <img
-      src={`${API_Base}/files/${id}/view/thumb`}
-      alt="thumb"
-      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-      loading="lazy"
-    />
-  )
-}
-
-interface Source {
-  id: number;
-  path: string;
-  status: string;
-  error_message?: string;
-  last_scanned: string;
-}
 
 function SourcesMgr() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -573,31 +412,5 @@ function StatCard({ title, count }: any) {
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: any = {
-    'DONE': 'bg-green-100 text-green-700 border-green-200',
-    'ERROR': 'bg-red-100 text-red-700 border-red-200',
-    'QUEUED': 'bg-gray-100 text-gray-700 border-gray-200',
-    'PROCESSING': 'bg-blue-100 text-blue-700 border-blue-200',
-    'SPLITTING': 'bg-blue-100 text-blue-700 border-blue-200',
-    'ENCODING': 'bg-indigo-100 text-indigo-700 border-indigo-200',
-    'SCANNING': 'bg-blue-100 text-blue-700 border-blue-200',
-    'IDLE': 'bg-gray-100 text-gray-600 border-gray-200'
-  };
-  const c = colors[status] || colors['PROCESSING'];
-  return (
-    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${c} tracking-wider`}>
-      {status}
-    </span>
-  )
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return '-';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
 
 export default App;
