@@ -31,14 +31,13 @@ def get_int(value):
         return None
     if isinstance(value, int):
         return value
-    if isinstance(value, (float, str)):
+    # Handle various formats by splitting on common separators and finding the first number
+    s = str(value).replace('x', ' ').replace(':', ' ').replace(',', ' ').split()
+    for part in s:
         try:
-            # Handle "1920 1080" or "1920x1080" by taking the first part
-            s = str(value).replace('x', ' ').split()
-            if s:
-                return int(float(s[0]))
+            return int(float(part))
         except (ValueError, TypeError):
-            pass
+            continue
     return None
 
 def get_float(value):
@@ -46,13 +45,12 @@ def get_float(value):
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    if isinstance(value, str):
+    s = str(value).replace('x', ' ').replace(':', ' ').replace(',', ' ').split()
+    for part in s:
         try:
-            s = value.replace('x', ' ').split()
-            if s:
-                return float(s[0])
+            return float(part)
         except (ValueError, TypeError):
-            pass
+            continue
     return None
 
 def process_metadata(payload):
