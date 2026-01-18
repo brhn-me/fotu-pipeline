@@ -83,7 +83,7 @@ export function FileCard({ file }: { file: FileItem }) {
                         <InfoRow
                             label="Photo Taken"
                             value={file.metadata?.taken_at ? new Date(file.metadata.taken_at).toLocaleString() : 'No EXIF Date'}
-                            valueClass={file.metadata?.taken_at ? "text-gray-900 font-bold" : "text-gray-400"}
+                            valueClass={file.metadata?.taken_at ? "text-gray-900" : "text-gray-400"}
                         />
                         <InfoRow label="File Created" value={new Date(file.file_create_date).toLocaleString()} />
                         <InfoRow label="File Modified" value={new Date(file.file_update_date).toLocaleString()} />
