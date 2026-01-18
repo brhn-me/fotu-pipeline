@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from src.db import r, engine, SessionLocal, File, Source, Config
 from src.db import (
     QUEUE_SCAN, QUEUE_PHOTO, QUEUE_VIDEO_SPLIT, QUEUE_RAW, QUEUE_THUMB,
-    QUEUE_METADATA
+    QUEUE_METADATA, STATS_PROCESSING, STATS_DONE, STATS_FAIL
 )
 from src.logger import get_logger
 
@@ -61,6 +61,7 @@ def find_sidecar(path):
 
 def process_scan(payload):
     source_id = payload.get("source_id")
+    r.incr(f"{STATS_PROCESSING}scan")
     # Query source first to get path for logging
     db: Session = SessionLocal()
     try:
@@ -150,6 +151,7 @@ def process_scan(payload):
         source.last_scanned = datetime.utcnow()
         source.status = "IDLE"
         db.commit()
+        r.incr(f"{STATS_DONE}scan")
         logger.info(f"Scan complete. Queued {cnt} files.", extra={"source_id": source_id, "count": cnt})
 
     except Exception as e:
@@ -158,7 +160,9 @@ def process_scan(payload):
              source.status = "ERROR"
              source.error_message = str(e)
              db.commit()
+        r.incr(f"{STATS_FAIL}scan")
     finally:
+        r.decr(f"{STATS_PROCESSING}scan")
         db.close()
 
 if __name__ == "__main__":

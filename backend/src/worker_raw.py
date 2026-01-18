@@ -3,7 +3,8 @@ import json
 import shutil
 import subprocess
 from sqlalchemy.orm import Session
-from src.db import r, engine, SessionLocal, File, Config, QUEUE_RAW
+from sqlalchemy.orm import Session
+from src.db import r, engine, SessionLocal, File, Config, QUEUE_RAW, STATS_PROCESSING, STATS_DONE, STATS_FAIL
 
 # Default output dir if config not set
 DEFAULT_OUTPUT_DIR = "/data/output"
@@ -18,6 +19,8 @@ def process_raw(payload):
     file_path = payload["path"]
     file_id = payload["id"]
     print(f"Processing RAW: {file_path}")
+    
+    r.incr(f"{STATS_PROCESSING}raw")
     
     db: Session = SessionLocal()
     try:
@@ -67,6 +70,7 @@ def process_raw(payload):
             if file_rec.size_bytes and file_rec.size_bytes > 0:
                 file_rec.compression_ratio = round(file_rec.size_bytes / stats.st_size, 2)
             db.commit()
+            r.incr(f"{STATS_DONE}raw")
             
         print(f"Done RAW: {output_path}")
 
@@ -76,7 +80,9 @@ def process_raw(payload):
             file_rec.status = "ERROR"
             file_rec.error_message = str(e)
             db.commit()
+        r.incr(f"{STATS_FAIL}raw")
     finally:
+        r.decr(f"{STATS_PROCESSING}raw")
         db.close()
 
 if __name__ == "__main__":

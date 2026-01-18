@@ -3,10 +3,11 @@ import time
 import json
 import shutil
 import subprocess
-from PIL import Image
 from sqlalchemy.orm import Session
-from src.db import r, engine, SessionLocal, File, QUEUE_PHOTO, Config
+from src.db import r, engine, SessionLocal, File, QUEUE_PHOTO, Config, Export, STATS_PROCESSING, STATS_DONE, STATS_FAIL, QUEUE_ORGANIZE
+from src.utils import get_trie_path
 from src.logger import get_logger
+from datetime import datetime
 
 logger = get_logger("worker.photo")
 
@@ -18,7 +19,13 @@ def get_output_dir(db: Session):
         return conf.value
     return os.getenv("OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
 
-def process_photo(file_path, file_id):
+def process_photo(payload):
+    file_id = payload.get("id")
+    file_path = payload.get("path")
+    
+    # Stats: Start
+    r.incr(f"{STATS_PROCESSING}photo")
+    
     db: Session = SessionLocal()
     try:
         logger.info(f"Processing photo: {file_path}", file_id=file_id)
@@ -30,83 +37,67 @@ def process_photo(file_path, file_id):
 
         output_dir = get_output_dir(db)
         
-        rel_name = os.path.basename(file_path)
-        output_path = os.path.join(output_dir, "photos", os.path.splitext(rel_name)[0] + ".avif")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        # Intermediate: .cache/images/{trie}/{id}.avif
+        rel_path = get_trie_path(file_id) # ab/cd/id
+        cache_dir = os.path.join(output_dir, ".cache", "images", os.path.dirname(rel_path))
+        os.makedirs(cache_dir, exist_ok=True)
         
-        # Try Pillow first
+        temp_path = os.path.join(cache_dir, f"{file_id}.avif")
+        
+        # Convert/Save
+        # Convert/Save using ImageMagick
+        # convert input -quality 85 output.avif
         try:
-            with Image.open(file_path) as img:
-                img.save(output_path, "AVIF", quality=85)
-        except Exception as e:
-            logger.warning(f"Pillow failed for {file_path}, trying ffmpeg: {e}", file_id=file_id)
+            logger.info(f"Converting with ImageMagick: {file_path} -> {temp_path}", file_id=file_id)
+            subprocess.run([
+                "convert", file_path, 
+                "-quality", "85", 
+                temp_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"ImageMagick failed for {file_path}, trying ffmpeg fallback: {e}", file_id=file_id)
             subprocess.run([
                 "ffmpeg", "-y", "-i", file_path, 
                 "-compression_level", "6", 
-                output_path
+                temp_path
             ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
-        if not os.path.exists(output_path):
+        if not os.path.exists(temp_path):
             raise Exception("Output file not created")
             
-        # Metadata
+        # Metadata Copy to Temp
         subprocess.run([
             "exiftool", "-Overwrite_Original", 
             "-TagsFromFile", file_path, 
             "-all:all>all:all", 
-            output_path
+            temp_path
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        shutil.copystat(file_path, output_path)
+        # Enqueue to Organizer
+        logger.info(f"Photo encoded, queueing organize: {temp_path}", file_id=file_id)
         
-        # Stats
-        stats = os.stat(output_path)
-        if file_rec:
-            file_rec.status = "DONE"
-            file_rec.output_path = output_path
-            file_rec.output_size_bytes = stats.st_size
-            if file_rec.size_bytes and file_rec.size_bytes > 0:
-                file_rec.compression_ratio = round(file_rec.size_bytes / stats.st_size, 2)
-            
-            # Extract basic EXIF (Date, Camera) via exiftool json
-            try:
-                meta = subprocess.check_output(["exiftool", "-json", file_path])
-                meta_json = json.loads(meta)[0]
-                
-                # Camera
-                make = meta_json.get("Make", "")
-                model = meta_json.get("Model", "")
-                file_rec.meta_camera = f"{make} {model}".strip() or None
-                
-                # Date (CreateDate or DateTimeOriginal)
-                date_str = meta_json.get("CreateDate") or meta_json.get("DateTimeOriginal")
-                if date_str:
-                    # Exif format: YYYY:MM:DD HH:MM:SS
-                    try:
-                        file_rec.meta_create_date = datetime.strptime(date_str[:19], "%Y:%m:%d %H:%M:%S")
-                    except:
-                        pass
-                
-                # GPS
-                lat = meta_json.get("GPSLatitude")
-                lon = meta_json.get("GPSLongitude")
-                if lat and lon:
-                    file_rec.meta_gps = f"{lat}, {lon}"
+        org_payload = json.dumps({
+            "file_id": file_id,
+            "temp_path": temp_path,
+            "type": "IMAGE"
+        })
+        r.rpush(QUEUE_ORGANIZE, org_payload)
 
-            except Exception as e:
-                logger.warning(f"Metadata extraction warning: {e}", file_id=file_id)
-
-            db.commit()
-            
-        logger.info(f"Encoded photo: {output_path}", file_id=file_id)
+        # Stats: Done
+        r.incr(f"{STATS_DONE}photo")
 
     except Exception as e:
         logger.error(f"Error processing {file_path}: {e}", file_id=file_id)
+        # Stats: Fail
+        r.incr(f"{STATS_FAIL}photo")
+        
         if file_rec:
             file_rec.status = "ERROR"
             file_rec.error_message = str(e)
             db.commit()
     finally:
+        # Stats: Finish Processing
+        r.decr(f"{STATS_PROCESSING}photo")
         db.close()
 
 if __name__ == "__main__":
@@ -116,6 +107,9 @@ if __name__ == "__main__":
         if task:
             try:
                 payload = json.loads(task[1])
-                process_photo(payload["path"], payload["id"])
+                # We need to know if it succeeded to increment DONE.
+                # process_photo doesn't return status. 
+                # I'll update process_photo to increment DONE on success inside the try block.
+                process_photo(payload)
             except Exception as e:
-                logger.error(f"Task error: {e}")
+                logger.error(f"Photo loop error: {e}")

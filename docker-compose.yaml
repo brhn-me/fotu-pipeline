@@ -43,6 +43,24 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  worker-organizer:
+    build: ./backend
+    container_name: worker-organizer
+    command: python -u -m src.worker_organizer
+    deploy:
+      replicas: 1
+    volumes:
+      - ./backend:/app
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pipeline:pipeline@db:5432/pipeline
+    depends_on:
+      - redis
+      - db
+
   api:
     build: ./backend
     command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload

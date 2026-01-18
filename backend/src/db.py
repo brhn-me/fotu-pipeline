@@ -18,6 +18,12 @@ QUEUE_VIDEO_JOIN = "queue:video_join"
 QUEUE_RAW = "queue:raw"
 QUEUE_THUMB = "queue:thumb"
 QUEUE_METADATA = "queue:metadata"
+QUEUE_ORGANIZE = "queue:organize"
+
+# Stats Keys (Prefixes)
+STATS_PROCESSING = "stats:processing:"
+STATS_DONE = "stats:done:"
+STATS_FAIL = "stats:fail:"
 
 # Postgres Connection
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://pipeline:pipeline@localhost:5432/pipeline")
@@ -69,6 +75,8 @@ class File(Base):
     # Relationships
     video_job = relationship("VideoJob", back_populates="file", uselist=False, cascade="all, delete-orphan")
     meta_info = relationship("FileMetadata", back_populates="file", uselist=False, cascade="all, delete-orphan")
+    thumbnails = relationship("Thumbnail", back_populates="file", cascade="all, delete-orphan")
+    exports = relationship("Export", back_populates="file", cascade="all, delete-orphan")
 
 class FileMetadata(Base):
     __tablename__ = "file_metadata"
@@ -113,6 +121,7 @@ class VideoJob(Base):
     __tablename__ = "video_jobs"
     
     id = Column(Integer, primary_key=True, index=True)
+    job_uuid = Column(String, unique=True, index=True)
     file_id = Column(String, ForeignKey("files.id"), unique=True)
     total_chunks = Column(Integer, default=0)
     job_dir = Column(String)
@@ -131,6 +140,37 @@ class VideoChunk(Base):
     retry_count = Column(Integer, default=0)
     
     job = relationship("VideoJob", back_populates="chunks")
+
+class Thumbnail(Base):
+    __tablename__ = "thumbnails"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(String, ForeignKey("files.id"))
+    path = Column(String, unique=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    file = relationship("File", back_populates="thumbnails")
+
+class Export(Base):
+    __tablename__ = "exports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    file_id = Column(String, ForeignKey("files.id"))
+    type = Column(String) # IMAGE, VIDEO
+    path = Column(String, unique=True)
+    variant = Column(String, nullable=True)
+    
+    # Metadata
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    
+    size_bytes = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    file = relationship("File", back_populates="exports")
 
 def init_db():
     Base.metadata.create_all(bind=engine)

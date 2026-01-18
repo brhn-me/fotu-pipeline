@@ -268,31 +268,82 @@ def view_file(fid: str, kind: str, db: Session = Depends(get_db)):
 
 LOKI_URL = "http://loki:3100/loki/api/v1/query_range"
 
-def parse_loki_entry(entry):
+def parse_loki_entry(entry, labels=None):
     try:
-        raw = json.loads(entry[1])
-        log_entry = raw.copy()
+        try:
+            raw = json.loads(entry[1])
+            if isinstance(raw, dict):
+                log_entry = raw.copy()
+            else:
+                 log_entry = {"message": str(raw)}
+        except json.JSONDecodeError:
+            log_entry = {"message": entry[1]}
+
         # Docker logs often wrap the app log in a 'log' field
-        if isinstance(raw, dict) and "log" in raw:
-            if isinstance(raw["log"], str):
+        if "log" in log_entry:
+            if isinstance(log_entry["log"], str):
                 try:
-                    inner = json.loads(raw["log"])
+                    inner = json.loads(log_entry["log"])
                     if isinstance(inner, dict):
                         log_entry.update(inner)
+                        # If message was inside inner, it overrides. 
+                        # If inner didn't have message but bad parsing, we keep outer?
                 except:
                     # Inner log is just text
-                    log_entry["message"] = raw["log"].strip()
+                    log_entry["message"] = log_entry["log"].strip()
+            del log_entry["log"] # Clean up
         
-        if not log_entry.get("timestamp"):
-             log_entry["timestamp"] = entry[0]
+        # Flatten extra_kvs if present
+        if "extra_kvs" in log_entry:
+            extra = log_entry.pop("extra_kvs")
+            if isinstance(extra, dict):
+                log_entry.update(extra)
+
+        # Helper to clean path
+        def clean_path_info(full_path):
+            if not full_path:
+                return None, None
+            # Strip /media_root prefix
+            if full_path.startswith("/media_root"):
+                rel = full_path.replace("/media_root", "", 1).lstrip("/")
+            else:
+                rel = full_path
+            
+            fname = os.path.basename(rel)
+            dname = os.path.dirname(rel)
+            if dname == ".": dname = ""
+            return fname, dname
+
+        # Try to find path info
+        candidates = [log_entry.get("path"), log_entry.get("file_path"), log_entry.get("filename")]
+        found_path = next((c for c in candidates if c), None)
+
+        if found_path:
+            fname, dname = clean_path_info(found_path)
+            log_entry["filename"] = fname
+            log_entry["path"] = dname
+            
+            # Remove redundant keys to keep payload clean? 
+            # Ideally yes, but maybe keep original 'path' in case debug needed.
+            # But UI uses 'filename' and 'path' now. 
+            pass
+
         return log_entry
-    except:
-        return {"message": entry[1], "timestamp": entry[0]}
+    except Exception as e:
+        # Fallback
+        res = {"message": entry[1], "timestamp": entry[0]}
+        if labels:
+            res.update(labels)
+        return res
 
 @app.get("/api/logs/service/{service_name}")
-def get_service_logs(service_name: str, limit: int = 100):
-    # Query: {service="service_name"}
-    query = f'{{service="{service_name}"}}'
+def get_service_logs(service_name: str, limit: int = 500):
+    # Query: {service="service_name"} or {job="docker"} for all
+    if service_name == "all":
+        query = '{job="docker"}'
+    else:
+        query = f'{{service="{service_name}"}}'
+        
     try:
         res = requests.get(LOKI_URL, params={"query": query, "limit": limit})
         res.raise_for_status()
@@ -300,8 +351,9 @@ def get_service_logs(service_name: str, limit: int = 100):
         logs = []
         if "data" in data and "result" in data["data"]:
             for stream in data["data"]["result"]:
+                labels = stream.get("stream", {})
                 for entry in stream["values"]:
-                    logs.append(parse_loki_entry(entry))
+                    logs.append(parse_loki_entry(entry, labels))
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return logs
     except Exception as e:
@@ -347,10 +399,51 @@ def get_file_logs(file_id: str, limit: int = 100):
         logs = []
         if "data" in data and "result" in data["data"]:
             for stream in data["data"]["result"]:
+                labels = stream.get("stream", {})
                 for entry in stream["values"]:
-                    logs.append(parse_loki_entry(entry))
+                    logs.append(parse_loki_entry(entry, labels))
         logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return logs
     except Exception as e:
         logger.error(f"Loki Error: {e}")
         return []
+@app.get("/api/workers/stats")
+def get_worker_stats(db: Session = Depends(get_db)):
+    from src.db import (
+        QUEUE_SCAN, QUEUE_PHOTO, QUEUE_VIDEO_SPLIT, QUEUE_VIDEO_ENCODE, QUEUE_VIDEO_JOIN,
+        QUEUE_RAW, QUEUE_THUMB, QUEUE_METADATA,
+        STATS_PROCESSING, STATS_DONE, STATS_FAIL
+    )
+    
+    queues = [
+        {"name": "scanner", "queue": QUEUE_SCAN, "key_suffix": "scan"},
+        {"name": "photo", "queue": QUEUE_PHOTO, "key_suffix": "photo"},
+        {"name": "video_split", "queue": QUEUE_VIDEO_SPLIT, "key_suffix": "video_split"},
+        {"name": "video_encode", "queue": QUEUE_VIDEO_ENCODE, "key_suffix": "video_encode"},
+        {"name": "video_join", "queue": QUEUE_VIDEO_JOIN, "key_suffix": "video_join"},
+        {"name": "raw", "queue": QUEUE_RAW, "key_suffix": "raw"},
+        {"name": "thumb", "queue": QUEUE_THUMB, "key_suffix": "thumb"},
+        {"name": "metadata", "queue": QUEUE_METADATA, "key_suffix": "metadata"},
+    ]
+    
+    # Pre-defined concurrencies (could be env or config, hardcoded for now based on docker-compose usually)
+    # Assuming Concurrency=1 for safety unless scaled. Video encode is usually parallel if multiple workers.
+    # For now just return queues/stats. UI column "Concurrency" can be hardcoded or retrieved if we store it.
+    
+    stats = []
+    for q in queues:
+        q_len = r.llen(q["queue"])
+        processing = int(r.get(f"{STATS_PROCESSING}{q['key_suffix']}") or 0)
+        done = int(r.get(f"{STATS_DONE}{q['key_suffix']}") or 0)
+        fail = int(r.get(f"{STATS_FAIL}{q['key_suffix']}") or 0)
+        
+        stats.append({
+            "worker": q["name"],
+            "queued": q_len,
+            "processing": processing,
+            "done": done,
+            "failed": fail,
+            "concurrency": "1" # Hardcoded for now
+        })
+        
+    return stats

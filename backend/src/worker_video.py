@@ -3,10 +3,13 @@ import json
 import subprocess
 import shutil
 import glob
+import uuid
 from sqlalchemy.orm import Session
-from src.db import r, engine, SessionLocal, File, VideoJob, VideoChunk, Config
+from sqlalchemy.orm import Session
+from src.db import r, engine, SessionLocal, File, VideoJob, VideoChunk, Config, Export, STATS_PROCESSING, STATS_DONE, STATS_FAIL, QUEUE_ORGANIZE
 from src.db import QUEUE_VIDEO_SPLIT, QUEUE_VIDEO_ENCODE, QUEUE_VIDEO_JOIN
 from datetime import datetime
+from src.utils import get_trie_path
 from src.logger import get_logger
 
 logger = get_logger("worker.video")
@@ -32,6 +35,8 @@ def process_split(payload):
     file_id = payload["id"]
     logger.info(f"Splitting: {file_path}", file_id=file_id)
     
+    r.incr(f"{STATS_PROCESSING}video_split")
+    
     db: Session = SessionLocal()
     try:
         # Update Status
@@ -40,8 +45,12 @@ def process_split(payload):
             file_rec.status = "SPLITTING"
             db.commit()
 
-        # Create distinct temp dir
-        job_dir = os.path.join(TEMP_DIR, file_id)
+        # Create distinct temp dir via Trie
+        # .cache/chunks/{trie}
+        # get_trie_path returns ab/cd/{file_id}
+        rel_path = get_trie_path(file_id)
+        job_dir = os.path.join(TEMP_DIR, "chunks", os.path.dirname(rel_path), file_id)
+        
         if os.path.exists(job_dir):
             shutil.rmtree(job_dir)
         os.makedirs(job_dir, exist_ok=True)
@@ -63,7 +72,8 @@ def process_split(payload):
         logger.info(f"Split {file_path} into {total_chunks} chunks", file_id=file_id)
 
         # Create Job Record
-        job = VideoJob(file_id=file_id, total_chunks=total_chunks, job_dir=job_dir)
+        job_uuid = str(uuid.uuid4())
+        job = VideoJob(file_id=file_id, total_chunks=total_chunks, job_dir=job_dir, job_uuid=job_uuid)
         db.add(job)
         db.commit() # Commit to get ID
         
@@ -92,6 +102,7 @@ def process_split(payload):
         if file_rec:
             file_rec.status = "PROCESSING"
             db.commit()
+        r.incr(f"{STATS_DONE}video_split")
 
     except Exception as e:
         db.rollback()
@@ -107,6 +118,8 @@ def process_encode(payload):
     chunk_path = payload["chunk_path"]
     job_id = payload["job_id"]
     index = payload["index"]
+    
+    r.incr(f"{STATS_PROCESSING}video_encode")
     
     db: Session = SessionLocal()
     try:
@@ -140,6 +153,7 @@ def process_encode(payload):
             
             chunk.status = "DONE"
             db.commit()
+            r.incr(f"{STATS_DONE}video_encode")
             
             # Check if all done
             pending_count = db.query(VideoChunk).filter(
@@ -184,12 +198,25 @@ def process_encode(payload):
             else:
                 chunk.status = "ERROR"
                 db.commit()
+                r.incr(f"{STATS_FAIL}video_encode")
                 
+    except Exception: # Top level exception outside logic block if needed? 
+        # Actually logic inside try/except block handles retry count but let's count persistent failures?
+        # The logic handles chunk.retry_count < 3. 
+        # If it retries, it's effectively a "fail" but maybe we don't count it as FAIL yet?
+        # The user said "fail". If we retry, it's not a final fail.
+        # But if we execute 'r.rpush', it goes back to queue. status pending.
+        # If we hit chunk.status = "ERROR", that's a FAIL.
+        pass
+
     finally:
+        r.decr(f"{STATS_PROCESSING}video_encode")
         db.close()
 
 def process_join(payload):
     job_id = payload["job_id"]
+    
+    r.incr(f"{STATS_PROCESSING}video_join")
     
     db: Session = SessionLocal()
     try:
@@ -219,11 +246,17 @@ def process_join(payload):
             for chunk in chunks:
                 f.write(f"file '{chunk}'\n")
                 
-        output_dir = get_output_dir(db)
-        rel_name = os.path.basename(original_path)
-        output_path = os.path.join(output_dir, "videos", os.path.splitext(rel_name)[0] + ".av1.mkv")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        # Join Logic
+        # Output to .cache/videos/{trie}/{id}.mkv
         
+        output_dir = get_output_dir(db)
+        rel_path = get_trie_path(file_id) # ab/cd/id
+        video_cache_dir = os.path.join(output_dir, ".cache", "videos", os.path.dirname(rel_path))
+        os.makedirs(video_cache_dir, exist_ok=True)
+        
+        output_path = os.path.join(video_cache_dir, f"{file_id}.mkv")
+        
+        # ffmpeg concat
         subprocess.run([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path,
             "-c", "copy", output_path
@@ -243,31 +276,19 @@ def process_join(payload):
         shutil.rmtree(job_dir)
         db.delete(job) 
         
-        # Update File
-        if file_rec:
-            file_rec.status = "DONE"
-            file_rec.output_path = output_path
-            
-            stats = os.stat(output_path)
-            file_rec.output_size_bytes = stats.st_size
-            if file_rec.size_bytes and file_rec.size_bytes > 0:
-                file_rec.compression_ratio = round(file_rec.size_bytes / stats.st_size, 2)
-            
-            # Extract Meta
-            try:
-                meta = subprocess.check_output(["exiftool", "-json", original_path])
-                meta_json = json.loads(meta)[0]
-                
-                if "CreateDate" in meta_json:
-                    try:
-                        file_rec.meta_create_date = datetime.strptime(meta_json["CreateDate"][:19], "%Y:%m:%d %H:%M:%S")
-                    except: pass
-                    
-            except: pass
-
-            db.commit()
-            
-        logger.info(f"Done video: {output_path}", file_id=file_id)
+        # Enqueue Organizer
+        logger.info(f"Video joined, queueing organize: {output_path}", file_id=file_id)
+        org_payload = json.dumps({
+            "file_id": file_id,
+            "temp_path": output_path,
+            "type": "VIDEO"
+        })
+        r.rpush(QUEUE_ORGANIZE, org_payload)
+              
+        db.commit()
+        r.incr(f"{STATS_DONE}video_join")
+        
+        logger.info(f"Done video join: {output_path}", file_id=file_id)
 
     except Exception as e:
         db.rollback()
@@ -277,6 +298,7 @@ def process_join(payload):
             file_rec.error_message = str(e)
             db.commit()
     finally:
+        r.decr(f"{STATS_PROCESSING}video_join")
         db.close()
 
 if __name__ == "__main__":

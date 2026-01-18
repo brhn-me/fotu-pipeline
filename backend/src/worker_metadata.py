@@ -4,9 +4,11 @@ import time
 import subprocess
 from datetime import datetime
 from sqlalchemy.orm import Session
-from src.db import r, SessionLocal, File, FileMetadata, QUEUE_METADATA
+from sqlalchemy.orm import Session
+from src.db import r, SessionLocal, File, FileMetadata, QUEUE_METADATA, STATS_PROCESSING, STATS_DONE, STATS_FAIL
 from src.logger import get_logger
 import exiftool
+import magic
 
 logger = get_logger("worker.metadata")
 
@@ -82,6 +84,8 @@ def process_metadata(payload):
     file_id = payload.get("id")
     file_path = payload.get("path")
     
+    r.incr(f"{STATS_PROCESSING}metadata")
+    
     db: Session = SessionLocal()
     try:
         file_rec = db.query(File).filter(File.id == file_id).first()
@@ -128,7 +132,13 @@ def process_metadata(payload):
             return None
 
         # Global info
-        target.mime_type = extract("mime_type", ["File:MIMEType"])
+        # Robust Mime Type Detection
+        try:
+             mime_type = magic.from_file(file_path, mime=True)
+        except Exception:
+             mime_type = None
+             
+        target.mime_type = extract("mime_type", ["File:MIMEType"]) or mime_type
         
         # Dimensions (complex logic, handle manually)
         w, h = None, None
@@ -219,10 +229,13 @@ def process_metadata(payload):
 
         target.source_keys = source_keys # Save map to DB
         db.commit()
+        r.incr(f"{STATS_DONE}metadata")
 
     except Exception as e:
         logger.error(f"Error processing metadata for {file_id}: {e}", extra={"file_id": file_id})
+        r.incr(f"{STATS_FAIL}metadata")
     finally:
+        r.decr(f"{STATS_PROCESSING}metadata")
         db.close()
 
 if __name__ == "__main__":

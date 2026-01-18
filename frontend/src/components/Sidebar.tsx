@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
     HomeIcon, FolderIcon, PhotoIcon, VideoCameraIcon,
     Cog6ToothIcon, CommandLineIcon, TableCellsIcon, QuestionMarkCircleIcon,
-    Bars3Icon
+    Bars3Icon, CpuChipIcon
 } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
@@ -18,6 +18,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         { id: 'videos', icon: VideoCameraIcon, label: 'Videos', path: '/videos' },
         { id: 'raw', icon: TableCellsIcon, label: 'RAW Files', path: '/raw' },
         { id: 'unknown', icon: QuestionMarkCircleIcon, label: 'Unknown', path: '/unknown' },
+        { id: 'workers', icon: CpuChipIcon, label: 'Workers', path: '/workers' },
         { id: 'logs', icon: CommandLineIcon, label: 'Logs', path: '/logs' },
         { id: 'settings', icon: Cog6ToothIcon, label: 'Settings', path: '/settings' },
     ];

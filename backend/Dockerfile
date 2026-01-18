@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     libavif-bin \
     exiftool \
     darktable \
+    libmagic1 \
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

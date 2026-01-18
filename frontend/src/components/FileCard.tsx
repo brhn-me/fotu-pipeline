@@ -165,17 +165,15 @@ export function FileCard({ file }: { file: FileItem }) {
                                 </div>
                             )}
 
-                            {/* Group 2: Codec & FPS */}
-                            {(file.metadata?.codec || file.metadata?.framerate) && (
-                                <div className="mt-1 pt-1 border-t border-gray-50 space-y-0.5">
-                                    {file.metadata?.codec && (
-                                        <InfoRow label="Video Codec" value={file.metadata.codec} valueClass="font-mono text-gray-600" />
-                                    )}
-                                    {file.metadata?.framerate && (
-                                        <InfoRow label="Frame Rate" value={`${file.metadata.framerate} fps`} valueClass="font-mono text-gray-600" />
-                                    )}
-                                </div>
-                            )}
+                            {/* Group 2: Tech Specs */}
+                            <div className="mt-1 pt-1 border-t border-gray-50 space-y-0.5">
+                                {file.metadata?.codec && (
+                                    <InfoRow label="Video Codec" value={file.metadata.codec} valueClass="font-mono text-gray-600" />
+                                )}
+                                {file.metadata?.framerate && (
+                                    <InfoRow label="Frame Rate" value={`${file.metadata.framerate} fps`} valueClass="font-mono text-gray-600" />
+                                )}
+                            </div>
 
                             {/* Group 3: Audio */}
                             {/* Group 3: Audio */}
