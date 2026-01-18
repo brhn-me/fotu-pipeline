@@ -53,20 +53,27 @@ def get_float(value):
     return None
 
 def get_video_info(path):
-    """Get video info using ffprobe."""
+    """Get video and audio info using ffprobe."""
     try:
         cmd = [
             "ffprobe", 
             "-v", "error", 
-            "-select_streams", "v:0", 
-            "-show_entries", "stream=width,height,codec_name,avg_frame_rate,duration", 
+            "-show_entries", "stream=width,height,codec_name,avg_frame_rate,duration,channels,sample_rate,codec_type,bit_rate", 
             "-of", "json", 
             path
         ]
         output = subprocess.check_output(cmd).decode()
         data = json.loads(output)
-        if "streams" in data and len(data["streams"]) > 0:
-            return data["streams"][0]
+        
+        info = {}
+        if "streams" in data:
+            for stream in data["streams"]:
+                if stream.get("codec_type") == "video" and "video_stream" not in info:
+                    info["video_stream"] = stream
+                elif stream.get("codec_type") == "audio" and "audio_stream" not in info:
+                    info["audio_stream"] = stream
+        return info
+
     except Exception as e:
         logger.error(f"FFPROBE Error {path}: {e}")
     return {}
@@ -103,66 +110,114 @@ def process_metadata(payload):
             target = FileMetadata(file_id=file_id)
             db.add(target)
 
+        # Source Key Tracking
+        source_keys = {}
+
+        def extract(field_name, candidates, transform=None):
+            """Helper to extract value and track source key."""
+            for key in candidates:
+                val = exif_meta.get(key)
+                if val is not None:
+                    try:
+                        final_val = transform(val) if transform else val
+                        if final_val is not None:
+                            source_keys[field_name] = key
+                            return final_val
+                    except:
+                        continue
+            return None
+
         # Global info
-        target.mime_type = exif_meta.get("File:MIMEType")
+        target.mime_type = extract("mime_type", ["File:MIMEType"])
         
-        # Dimensions (ExifTool fallback)
+        # Dimensions (complex logic, handle manually)
         w, h = None, None
         img_size = exif_meta.get("Composite:ImageSize") or exif_meta.get("File:ImageSize")
-        if img_size and isinstance(img_size, str):
-            parts = img_size.replace('x', ' ').split()
-            if len(parts) >= 2:
-                w, h = get_int(parts[0]), get_int(parts[1])
-        
-        target.width = get_int(exif_meta.get("File:ImageWidth")) or get_int(exif_meta.get("EXIF:ExifImageWidth")) or w
-        target.height = get_int(exif_meta.get("File:ImageHeight")) or get_int(exif_meta.get("EXIF:ExifImageHeight")) or h
-        
+        if img_size:
+            source_keys["width"] = "Composite:ImageSize" if "Composite:ImageSize" in exif_meta else "File:ImageSize"
+            source_keys["height"] = source_keys["width"]
+            if isinstance(img_size, str):
+                parts = img_size.replace('x', ' ').split()
+                if len(parts) >= 2:
+                    w, h = get_int(parts[0]), get_int(parts[1])
+
+        target.width = extract("width", ["File:ImageWidth", "EXIF:ExifImageWidth"], get_int) or w
+        if not target.width and w: target.width = w # Restore composite if direct failed
+
+        target.height = extract("height", ["File:ImageHeight", "EXIF:ExifImageHeight"], get_int) or h
+        if not target.height and h: target.height = h
+
         # Taken At
-        taken_at_str = exif_meta.get("EXIF:DateTimeOriginal") or exif_meta.get("QuickTime:CreateDate") or exif_meta.get("File:FileModifyDate")
-        target.taken_at = parse_date(taken_at_str)
+        target.taken_at = extract("taken_at", ["EXIF:DateTimeOriginal", "QuickTime:CreateDate", "File:FileModifyDate"], parse_date)
         
         # GPS
-        target.lat = get_float(exif_meta.get("Composite:GPSLatitude") or exif_meta.get("EXIF:GPSLatitude"))
-        target.lon = get_float(exif_meta.get("Composite:GPSLongitude") or exif_meta.get("EXIF:GPSLongitude"))
+        target.lat = extract("lat", ["Composite:GPSLatitude", "EXIF:GPSLatitude"], get_float)
+        target.lon = extract("lon", ["Composite:GPSLongitude", "EXIF:GPSLongitude"], get_float)
 
         # Photo Specific
-        target.make = exif_meta.get("EXIF:Make")
-        target.model = exif_meta.get("EXIF:Model")
-        target.lens = exif_meta.get("EXIF:LensModel") or exif_meta.get("EXIF:LensInfo")
-        target.iso = get_int(exif_meta.get("EXIF:ISO"))
-        target.aperture = get_float(exif_meta.get("Composite:Aperture") or exif_meta.get("EXIF:FNumber"))
-        target.exposure_time = str(exif_meta.get("EXIF:ExposureTime")) if exif_meta.get("EXIF:ExposureTime") else None
-        target.focal_length = get_float(exif_meta.get("EXIF:FocalLength"))
+        target.make = extract("make", ["EXIF:Make"])
+        target.model = extract("model", ["EXIF:Model"])
+        target.lens = extract("lens", ["EXIF:LensModel", "EXIF:LensInfo"])
+        target.iso = extract("iso", ["EXIF:ISO"], get_int)
+        target.aperture = extract("aperture", ["Composite:Aperture", "EXIF:FNumber"], get_float)
+        target.exposure_time = extract("exposure_time", ["EXIF:ExposureTime"], str)
+        target.focal_length = extract("focal_length", ["EXIF:FocalLength"], get_float)
 
         # Video Specific overrides using FFPROBE
         if is_video:
-            ff_info = get_video_info(file_path)
+            ff_data = get_video_info(file_path)
             
-            if "codec_name" in ff_info:
-                target.codec = ff_info["codec_name"] # e.g. "h264"
+            # Video Stream
+            v_stream = ff_data.get("video_stream", {})
+            if v_stream:
+                if "codec_name" in v_stream:
+                    target.codec = v_stream["codec_name"]
+                    source_keys["codec"] = "ffprobe:video:codec_name"
                 
-            if "duration" in ff_info:
-                target.duration = get_float(ff_info["duration"])
-            elif "duration" not in ff_info and exif_meta:
-                 target.duration = get_float(exif_meta.get("QuickTime:Duration") or exif_meta.get("Composite:Duration"))
+                if "duration" in v_stream:
+                    target.duration = get_float(v_stream["duration"])
+                    source_keys["duration"] = "ffprobe:video:duration"
+                    
+                if "width" in v_stream and "height" in v_stream:
+                    target.width = get_int(v_stream["width"])
+                    target.height = get_int(v_stream["height"])
+                    source_keys["width"] = "ffprobe:video:width"
+                    source_keys["height"] = "ffprobe:video:height"
+                    
+                if "avg_frame_rate" in v_stream:
+                    try:
+                        num, den = v_stream["avg_frame_rate"].split('/')
+                        if int(den) > 0:
+                            target.framerate = round(int(num) / int(den), 2)
+                            source_keys["framerate"] = "ffprobe:video:avg_frame_rate"
+                    except:
+                        target.framerate = get_float(v_stream["avg_frame_rate"])
+                        source_keys["framerate"] = "ffprobe:video:avg_frame_rate"
 
-            if "width" in ff_info and "height" in ff_info:
-                target.width = get_int(ff_info["width"])
-                target.height = get_int(ff_info["height"])
+            # Audio Stream
+            a_stream = ff_data.get("audio_stream", {})
+            if a_stream:
+                target.audio_codec = a_stream.get("codec_name")
+                if target.audio_codec: source_keys["audio_codec"] = "ffprobe:audio:codec_name"
+
+                target.audio_channels = get_int(a_stream.get("channels"))
+                if target.audio_channels: source_keys["audio_channels"] = "ffprobe:audio:channels"
+
+                target.audio_sample_rate = get_int(a_stream.get("sample_rate"))
+                if target.audio_sample_rate: source_keys["audio_sample_rate"] = "ffprobe:audio:sample_rate"
                 
-            if "avg_frame_rate" in ff_info:
-                # Format is often "30000/1001"
-                try:
-                    num, den = ff_info["avg_frame_rate"].split('/')
-                    if int(den) > 0:
-                        target.framerate = round(int(num) / int(den), 2)
-                except:
-                    target.framerate = get_float(ff_info["avg_frame_rate"])
+                target.audio_bitrate = get_int(a_stream.get("bit_rate"))
+                if target.audio_bitrate: source_keys["audio_bitrate"] = "ffprobe:audio:bit_rate"
+
+            # Fallback duration from container if stream duration missing
+            if not target.duration and exif_meta:
+                 target.duration = extract("duration", ["QuickTime:Duration", "Composite:Duration"], get_float)
         
         # Fallback fields if Exiftool had them and ffprobe failed/skipped
-        if target.codec is None and exif_meta: 
-             target.codec = exif_meta.get("Composite:VideoCodec") or exif_meta.get("Video:CompressorID")
+        if target.codec is None: 
+             target.codec = extract("codec", ["Composite:VideoCodec", "Video:CompressorID"])
 
+        target.source_keys = source_keys # Save map to DB
         db.commit()
 
     except Exception as e:

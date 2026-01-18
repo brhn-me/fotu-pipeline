@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PhotoIcon, XMarkIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { type FileItem } from '../types';
 import { API_Base } from '../config';
 import { StatusBadge } from './StatusBadge';
@@ -13,7 +13,6 @@ export function FileCard({ file }: { file: FileItem }) {
     const [showMap, setShowMap] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
 
-    // Calculate compression percentage
     // Calculate compression percentage
     let compressionPct = null;
     if (file.output_size_bytes && file.size_bytes) {
@@ -35,10 +34,17 @@ export function FileCard({ file }: { file: FileItem }) {
                         <StatusBadge status={file.status} />
                     </div>
 
-                    {/* Video Progress */}
-                    {file.type === 'VIDEO' && file.status !== 'DONE' && (
+                    {/* Progress Bar */}
+                    {file.status !== 'DONE' && file.status !== 'ERROR' && (
                         <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 z-10">
-                            <div className="h-full bg-blue-500 transition-all duration-300 animate-stripes" style={{ width: `${file.video_progress || 0}%` }} />
+                            <div
+                                className={`h-full transition-all duration-1000 ease-linear animate-stripes ${file.status === 'QUEUED' ? 'bg-gray-300' : 'bg-blue-500'
+                                    }`}
+                                style={{
+                                    width: `${(file.type === 'VIDEO' && file.video_progress > 0) ? file.video_progress : 100}%`,
+                                    animation: file.status === 'QUEUED' ? 'none' : undefined
+                                }}
+                            />
                         </div>
                     )}
 
@@ -83,9 +89,8 @@ export function FileCard({ file }: { file: FileItem }) {
                         <InfoRow label="File Modified" value={new Date(file.file_update_date).toLocaleString()} />
                     </div>
 
-                    {/* Metadata Section */}
+                    {/* Metadata Section: Location */}
                     <div className="space-y-0.5 pt-1 border-t border-gray-50">
-                        {/* Location */}
                         <div
                             className="flex justify-between text-xs items-center h-5 cursor-pointer group/loc"
                             onClick={(e) => {
@@ -107,48 +112,102 @@ export function FileCard({ file }: { file: FileItem }) {
                                 </span>
                             )}
                         </div>
-
-                        {/* Camera */}
-                        <InfoRow
-                            label="Camera"
-                            value={file.metadata?.model ? `${file.metadata.make || ''} ${file.metadata.model}`.trim() : 'Unknown'}
-                            valueClass={file.metadata?.model ? "font-mono text-gray-700" : "text-gray-400"}
-                        />
-                        {file.metadata?.lens && (
-                            <InfoRow label="Lens" value={file.metadata.lens} valueClass="font-mono text-gray-400 scale-90 origin-right" />
-                        )}
-                        {(file.metadata?.iso || file.metadata?.aperture) && (
-                            <div className="flex justify-end gap-2 text-[10px] text-gray-400 font-mono">
-                                {file.metadata.iso && <span>ISO {file.metadata.iso}</span>}
-                                {file.metadata.aperture && <span>f/{file.metadata.aperture}</span>}
-                                {file.metadata.exposure_time && <span>{file.metadata.exposure_time}s</span>}
-                            </div>
-                        )}
                     </div>
 
+                    {/* Camera Section */}
+                    {(file.metadata?.model || file.metadata?.iso || file.metadata?.aperture) && (
+                        <div className="space-y-0.5 pt-1 border-t border-gray-50">
+                            <InfoRow
+                                label="Camera"
+                                value={file.metadata?.model ? `${file.metadata.make || ''} ${file.metadata.model}`.trim() : 'Unknown'}
+                                valueClass={file.metadata?.model ? "font-mono text-gray-700" : "text-gray-400"}
+                            />
+                            {file.metadata?.lens && (
+                                <InfoRow label="Lens" value={file.metadata.lens} valueClass="font-mono text-gray-400 scale-90 origin-right" />
+                            )}
 
+                            {file.metadata?.iso && <InfoRow label="ISO" value={file.metadata.iso} valueClass="font-mono text-gray-600" />}
+                            {file.metadata?.aperture && <InfoRow label="Aperture" value={`f/${file.metadata.aperture}`} valueClass="font-mono text-gray-600" />}
+                            {file.metadata?.exposure_time && <InfoRow label="Shutter" value={formatShutterSpeed(file.metadata.exposure_time)} valueClass="font-mono text-gray-600" />}
+
+                            {file.type !== 'VIDEO' && file.metadata?.width && file.metadata?.height && (
+                                <div className="mt-1 pt-1 border-t border-gray-50">
+                                    <InfoRow
+                                        label="Resolution"
+                                        value={`${file.metadata.width}x${file.metadata.height}`}
+                                        valueClass="font-mono text-gray-600"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Video Specific Metadata */}
                     {file.type === 'VIDEO' && (
                         <div className="space-y-0.5 pt-1 border-t border-gray-50">
-                            {file.metadata?.duration && (
-                                <InfoRow
-                                    label="Duration"
-                                    value={formatDuration(file.metadata.duration)}
-                                    valueClass="font-mono text-gray-700"
-                                />
+                            {/* Group 1: Resolution & Duration */}
+                            {(file.metadata?.duration || (file.metadata?.width && file.metadata?.height)) && (
+                                <div className="space-y-0.5">
+                                    {file.metadata?.width && file.metadata?.height && (
+                                        <InfoRow
+                                            label="Resolution"
+                                            value={`${file.metadata.width}x${file.metadata.height}`}
+                                            valueClass="font-mono text-gray-600"
+                                        />
+                                    )}
+                                    {file.metadata?.duration && (
+                                        <InfoRow
+                                            label="Duration"
+                                            value={formatDuration(file.metadata.duration)}
+                                            valueClass="font-mono text-gray-700"
+                                        />
+                                    )}
+                                </div>
                             )}
-                            {file.metadata?.width && file.metadata?.height && (
-                                <InfoRow
-                                    label="Resolution"
-                                    value={`${file.metadata.width}x${file.metadata.height}`}
-                                    valueClass="font-mono text-gray-600"
-                                />
+
+                            {/* Group 2: Codec & FPS */}
+                            {(file.metadata?.codec || file.metadata?.framerate) && (
+                                <div className="mt-1 pt-1 border-t border-gray-50 space-y-0.5">
+                                    {file.metadata?.codec && (
+                                        <InfoRow label="Video Codec" value={file.metadata.codec} valueClass="font-mono text-gray-600" />
+                                    )}
+                                    {file.metadata?.framerate && (
+                                        <InfoRow label="Frame Rate" value={`${file.metadata.framerate} fps`} valueClass="font-mono text-gray-600" />
+                                    )}
+                                </div>
                             )}
-                            <div className="flex justify-between text-xs text-gray-500 font-mono">
-                                <span className="truncate max-w-[150px]" title={file.metadata?.codec}>{file.metadata?.codec}</span>
-                                {file.metadata?.framerate && <span>{file.metadata.framerate} fps</span>}
-                            </div>
+
+                            {/* Group 3: Audio */}
+                            {/* Group 3: Audio */}
+                            {(file.metadata?.audio_codec || file.metadata?.audio_channels) && (
+                                <div className="mt-1 pt-1 border-t border-gray-50 space-y-0.5">
+                                    {file.metadata?.audio_codec && (
+                                        <InfoRow
+                                            label="Audio Codec"
+                                            value={file.metadata.audio_codec}
+                                            valueClass="font-mono text-gray-600"
+                                            title={file.metadata?.source_keys?.audio_codec}
+                                        />
+                                    )}
+                                    {file.metadata?.audio_channels && (
+                                        <InfoRow
+                                            label="Channels"
+                                            value={`${file.metadata.audio_channels} (${file.metadata.audio_channels === 2 ? 'Stereo' : file.metadata.audio_channels === 1 ? 'Mono' : file.metadata.audio_channels >= 6 ? 'Surround' : 'Multi'})`}
+                                            valueClass="font-mono text-gray-600"
+                                            title={file.metadata?.source_keys?.audio_channels}
+                                        />
+                                    )}
+                                    <div className="flex justify-between text-xs text-gray-600" title="Bitrate / Sample Rate">
+                                        <span>Quality:</span>
+                                        <span className="font-mono text-gray-600">
+                                            {[
+                                                file.metadata?.audio_bitrate ? `${Math.round(file.metadata.audio_bitrate / 1000)} kbps` : null,
+                                                file.metadata?.audio_sample_rate ? `${(file.metadata.audio_sample_rate / 1000).toFixed(1)} kHz` : null
+                                            ].filter(Boolean).join(' / ')}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -177,23 +236,20 @@ export function FileCard({ file }: { file: FileItem }) {
                         )}
                     </div>
                 </div>
-            </div >
-
+            </div>
 
             {/* Logs Modal */}
             {
                 showLogs && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <div className="bg-white w-full max-w-4xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-                                <h3 className="font-medium text-lg">Logs: {file.name}</h3>
-                                <button onClick={() => setShowLogs(false)} className="text-gray-500 hover:text-gray-700">
-                                    <XMarkIcon className="w-6 h-6" />
-                                </button>
-                            </div>
-                            <div className="p-4 bg-gray-50 flex-1 overflow-hidden">
-                                <LogsViewer fileId={file.id} height="h-full" />
-                            </div>
+                            <LogsViewer
+                                fileId={file.id}
+                                fileName={file.name}
+                                height="h-full"
+                                onClose={() => setShowLogs(false)}
+                                className="flex flex-col h-full"
+                            />
                         </div>
                     </div>
                 )
@@ -250,3 +306,28 @@ function formatDuration(seconds: number) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatShutterSpeed(val: number | string) {
+    const v = Number(val);
+    if (!v || isNaN(v)) return val + 's';
+
+    if (v >= 1) return v + 's';
+
+    // Standard shutter speed denominators
+    const standardDenominators = [
+        2, 3, 4, 5, 6, 8, 10, 13, 15, 20, 25, 30, 40, 50, 60, 80, 100,
+        125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000,
+        2500, 3200, 4000, 5000, 6400, 8000
+    ];
+
+    const reciprocal = 1 / v;
+
+    // Find closest standard denominator
+    // If within 5% error, snap to it
+    for (const std of standardDenominators) {
+        if (Math.abs(reciprocal - std) / std < 0.05) {
+            return `1/${std}s`;
+        }
+    }
+
+    return `1/${Math.round(reciprocal)}s`;
+}

@@ -1,6 +1,6 @@
 import os
 import redis
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, ForeignKey, Float, BigInteger
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, ForeignKey, Float, BigInteger, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -97,6 +97,15 @@ class FileMetadata(Base):
     duration = Column(Float, nullable=True)
     codec = Column(String, nullable=True)
     framerate = Column(Float, nullable=True)
+    
+    # Audio specific
+    audio_codec = Column(String, nullable=True)
+    audio_channels = Column(Integer, nullable=True)
+    audio_sample_rate = Column(Integer, nullable=True)
+    audio_bitrate = Column(Integer, nullable=True) # bits per second
+    
+    # Source tracking
+    source_keys = Column(JSON, nullable=True) # Map field -> source key (e.g. "iso": "EXIF:ISO")
     
     file = relationship("File", back_populates="meta_info")
 

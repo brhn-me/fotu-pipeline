@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { XMarkIcon, CommandLineIcon } from '@heroicons/react/24/outline';
 import { API_Base } from '../config';
 
 interface LogEntry {
@@ -9,7 +10,7 @@ interface LogEntry {
     file_id?: string;
 }
 
-export function LogsViewer({ fileId, service, height = "h-96" }: { fileId?: string, service?: string, height?: string }) {
+export function LogsViewer({ fileId, fileName, service, height = "h-96", onClose, className }: { fileId?: string, fileName?: string, service?: string, height?: string, onClose?: () => void, className?: string }) {
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -37,14 +38,37 @@ export function LogsViewer({ fileId, service, height = "h-96" }: { fileId?: stri
     }, [fetchLogs]);
 
     return (
-        <div className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col ${height}`}>
+        <div className={className || `bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col ${height}`}>
             <div className="bg-gray-50 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-                <span className="text-gray-600 font-mono text-xs font-medium">
-                    {fileId ? `File: ${fileId}` : `Service: ${service}`}
-                </span>
-                <button onClick={fetchLogs} className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-1 rounded transition-colors">
-                    Refresh
-                </button>
+                <div className="flex items-center gap-2">
+                    <CommandLineIcon className="w-5 h-5 text-gray-500" />
+                    <div className="flex flex-col">
+                        <span className="text-gray-900 font-mono text-xs font-bold">
+                            {fileName ? fileName : (service ? `Service: ${service}` : `File: ${fileId}`)}
+                        </span>
+                        {fileName && fileId && <span className="text-gray-400 font-mono text-[10px]">{fileId}</span>}
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={fetchLogs}
+                        disabled={loading}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 px-3 py-1.5 rounded transition-all flex items-center gap-1.5"
+                    >
+                        {loading && (
+                            <svg className="animate-spin h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        )}
+                        {loading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                    {onClose && (
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-200 rounded transition-colors">
+                            <XMarkIcon className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
             </div>
             <div className="flex-1 overflow-auto p-4 font-mono text-xs space-y-1.5 bg-white">
                 {logs.length === 0 && !loading && <div className="text-gray-400 italic">No logs found</div>}

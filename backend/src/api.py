@@ -184,7 +184,12 @@ def list_files(db: Session = Depends(get_db)):
                 "focal_length": m.focal_length,
                 "duration": m.duration,
                 "codec": m.codec,
-                "framerate": m.framerate
+                "framerate": m.framerate,
+                "audio_codec": m.audio_codec,
+                "audio_channels": m.audio_channels,
+                "audio_sample_rate": m.audio_sample_rate,
+                "audio_bitrate": m.audio_bitrate,
+                "source_keys": m.source_keys
             }
 
         results.append({

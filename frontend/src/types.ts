@@ -36,6 +36,11 @@ export interface FileItem {
         duration?: number;
         codec?: string;
         framerate?: number;
+        audio_codec?: string;
+        audio_channels?: number;
+        audio_sample_rate?: number;
+        audio_bitrate?: number;
+        source_keys?: Record<string, string>;
     };
 }
 

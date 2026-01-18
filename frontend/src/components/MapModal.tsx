@@ -14,7 +14,7 @@ const customIcon = L.divIcon({
     className: 'custom-map-marker',
     html: renderToStaticMarkup(
         <div className="text-red-600 drop-shadow-lg filter">
-            <MapPinIcon className="w-10 h-10 -mt-10 -ml-5" />
+            <MapPinIcon className="w-10 h-10" />
         </div>
     ),
     iconSize: [40, 40],
